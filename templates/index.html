@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>EPUB Reader</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1 id="book-title">Drop an EPUB to start reading</h1>
+    <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Toggle theme">
+      Dark Theme
+    </button>
+  </header>
+
+  <main class="layout">
+    <section id="dropzone" class="dropzone" aria-label="EPUB upload area">
+      <p><strong>Drag and drop your .epub here</strong></p>
+      <p>or</p>
+      <label class="file-btn" for="epub-input">Choose file</label>
+      <input id="epub-input" type="file" accept=".epub" />
+      <p id="status" class="status">Waiting for file...</p>
+    </section>
+
+    <article id="reader" class="reader" aria-live="polite"></article>
+  </main>
+
+  <script src="/static/app.js" defer></script>
+</body>
+</html>

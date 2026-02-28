@@ -1,0 +1,141 @@
+:root {
+  --hue: 28;
+  --bg: hsl(var(--hue) 45% 94%);
+  --panel: hsl(var(--hue) 55% 98%);
+  --ink: hsl(var(--hue) 30% 14%);
+  --accent: hsl(var(--hue) 70% 38%);
+  --line: hsl(var(--hue) 30% 78%);
+  --status: hsl(var(--hue) 22% 32%);
+  --drop-active: hsl(var(--hue) 90% 94%);
+  --glow-a: hsl(calc(var(--hue) + 30) 95% 85% / 0.2);
+  --glow-b: hsl(calc(var(--hue) - 20) 82% 75% / 0.18);
+  --bg-top: hsl(calc(var(--hue) + 5) 68% 90%);
+}
+
+:root[data-theme="dark"] {
+  --bg: hsl(var(--hue) 36% 10%);
+  --panel: hsl(var(--hue) 28% 14%);
+  --ink: hsl(calc(var(--hue) + 20) 35% 88%);
+  --accent: hsl(calc(var(--hue) + 52) 92% 64%);
+  --line: hsl(var(--hue) 30% 26%);
+  --status: hsl(var(--hue) 28% 74%);
+  --drop-active: hsl(var(--hue) 40% 19%);
+  --glow-a: hsl(calc(var(--hue) + 35) 88% 32% / 0.22);
+  --glow-b: hsl(calc(var(--hue) - 15) 72% 28% / 0.2);
+  --bg-top: hsl(calc(var(--hue) + 12) 46% 18%);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 12% 0%, var(--glow-a), transparent 40%),
+    radial-gradient(circle at 100% 10%, var(--glow-b), transparent 42%),
+    radial-gradient(circle at top, var(--bg-top), var(--bg) 74%);
+  font-family: Georgia, "Times New Roman", serif;
+  transition: color 180ms ease, background 300ms ease;
+}
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: color-mix(in hsl, var(--panel) 86%, transparent);
+  border-bottom: 1px solid var(--line);
+  backdrop-filter: blur(4px);
+  padding: 10px 14px;
+}
+
+.topbar h1 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.theme-toggle {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--ink);
+  padding: 8px 12px;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.layout {
+  width: min(980px, 95vw);
+  margin: 20px auto 30px;
+  display: grid;
+  gap: 16px;
+}
+
+.dropzone {
+  border: 2px dashed var(--accent);
+  border-radius: 12px;
+  background: var(--panel);
+  padding: 18px;
+  text-align: center;
+}
+
+.dropzone.active {
+  background: var(--drop-active);
+}
+
+.file-btn {
+  display: inline-block;
+  cursor: pointer;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 8px;
+  padding: 10px 14px;
+}
+
+#epub-input {
+  display: none;
+}
+
+.status {
+  margin-top: 12px;
+  min-height: 1.2em;
+  color: var(--status);
+}
+
+.reader {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: clamp(16px, 2vw, 28px);
+  line-height: 1.7;
+  font-size: clamp(17px, 1.4vw, 20px);
+  overflow-wrap: break-word;
+}
+
+.reader .chapter {
+  margin-bottom: 2.2em;
+}
+
+.reader img {
+  max-width: 100%;
+  height: auto;
+}
+
+@media (max-width: 700px) {
+  .layout {
+    width: 96vw;
+  }
+
+  .topbar h1 {
+    font-size: 1rem;
+  }
+
+  .theme-toggle {
+    padding: 7px 10px;
+    font-size: 0.85rem;
+  }
+}
