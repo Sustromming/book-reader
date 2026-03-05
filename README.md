@@ -2,7 +2,7 @@
 
 Simple drag-and-drop EPUB reader built with Python and Flask.
 It converts an `.epub` into one long-form HTML document and embeds it directly into the page for continuous reading.
-
+Demo - https://sustromming.pythonanywhere.com/
 ## Features
 
 - Drag-and-drop `.epub` upload
