@@ -1,13 +1,17 @@
+import os
 import base64
 import html
 import mimetypes
 import re
 import zipfile
 from io import BytesIO
+from html.parser import HTMLParser
 from pathlib import PurePosixPath
+from urllib.parse import urlparse
 from xml.etree import ElementTree as ET
 
 from flask import Flask, jsonify, render_template, request
+from werkzeug.exceptions import RequestEntityTooLarge
 
 
 app = Flask(__name__)
@@ -15,6 +19,87 @@ app = Flask(__name__)
 
 CONTAINER_PATH = "META-INF/container.xml"
 MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB
+VOID_TAGS = {
+    "area",
+    "base",
+    "br",
+    "col",
+    "embed",
+    "hr",
+    "img",
+    "input",
+    "link",
+    "meta",
+    "param",
+    "source",
+    "track",
+    "wbr",
+}
+ALLOWED_TAGS = {
+    "a",
+    "abbr",
+    "article",
+    "aside",
+    "b",
+    "blockquote",
+    "br",
+    "caption",
+    "cite",
+    "code",
+    "dd",
+    "del",
+    "details",
+    "div",
+    "dl",
+    "dt",
+    "em",
+    "figcaption",
+    "figure",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "hr",
+    "i",
+    "img",
+    "li",
+    "mark",
+    "ol",
+    "p",
+    "pre",
+    "q",
+    "s",
+    "section",
+    "small",
+    "span",
+    "strong",
+    "sub",
+    "summary",
+    "sup",
+    "table",
+    "tbody",
+    "td",
+    "tfoot",
+    "th",
+    "thead",
+    "tr",
+    "u",
+    "ul",
+}
+GLOBAL_ATTRS = {"class", "id", "lang", "role", "title", "dir"}
+TAG_ATTRS = {
+    "a": {"href", "name", "target", "rel"},
+    "blockquote": {"cite"},
+    "img": {"src", "alt", "width", "height"},
+    "ol": {"start", "type", "reversed"},
+    "td": {"colspan", "rowspan"},
+    "th": {"colspan", "rowspan", "scope"},
+}
+SKIP_CONTENT_TAGS = {"script", "style"}
+
+app.config["MAX_CONTENT_LENGTH"] = MAX_FILE_SIZE
 
 
 def _read_zip_text(zf: zipfile.ZipFile, path: str) -> str:
@@ -71,8 +156,104 @@ def _extract_body(xhtml_text: str) -> str:
     return xhtml_text
 
 
+def _is_safe_url(value: str, *, for_image: bool) -> bool:
+    compact = "".join(value.split()).lower()
+    parsed = urlparse(compact)
+    if parsed.scheme in {"javascript", "vbscript"}:
+        return False
+    if parsed.scheme == "data":
+        return for_image
+    return True
+
+
+class _SafeHtmlParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=False)
+        self.parts: list[str] = []
+        self.open_tags: list[str] = []
+        self.skip_depth = 0
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        self._append_start_tag(tag, attrs, close=False)
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        self._append_start_tag(tag, attrs, close=True)
+
+    def _append_start_tag(self, tag: str, attrs: list[tuple[str, str | None]], *, close: bool) -> None:
+        tag = tag.lower()
+        if tag in SKIP_CONTENT_TAGS:
+            self.skip_depth += 1
+            return
+        if self.skip_depth or tag not in ALLOWED_TAGS:
+            return
+
+        allowed_attrs = GLOBAL_ATTRS | TAG_ATTRS.get(tag, set())
+        cleaned_attrs: list[str] = []
+        for attr_name, attr_value in attrs:
+            attr_name = attr_name.lower()
+            if attr_name.startswith("on"):
+                continue
+            if attr_name not in allowed_attrs and not attr_name.startswith("aria-"):
+                continue
+            if attr_value is None:
+                cleaned_attrs.append(attr_name)
+                continue
+            if attr_name in {"href", "src"} and not _is_safe_url(attr_value, for_image=tag == "img"):
+                continue
+            escaped_value = html.escape(attr_value, quote=True)
+            cleaned_attrs.append(f'{attr_name}="{escaped_value}"')
+
+        attr_text = f" {' '.join(cleaned_attrs)}" if cleaned_attrs else ""
+        if close or tag in VOID_TAGS:
+            self.parts.append(f"<{tag}{attr_text}>")
+            return
+
+        self.parts.append(f"<{tag}{attr_text}>")
+        self.open_tags.append(tag)
+
+    def handle_endtag(self, tag: str) -> None:
+        tag = tag.lower()
+        if tag in SKIP_CONTENT_TAGS:
+            if self.skip_depth:
+                self.skip_depth -= 1
+            return
+        if self.skip_depth or tag not in ALLOWED_TAGS or tag in VOID_TAGS:
+            return
+
+        for index in range(len(self.open_tags) - 1, -1, -1):
+            open_tag = self.open_tags[index]
+            self.parts.append(f"</{open_tag}>")
+            self.open_tags.pop()
+            if open_tag == tag:
+                break
+
+    def handle_data(self, data: str) -> None:
+        if not self.skip_depth:
+            self.parts.append(html.escape(data))
+
+    def handle_entityref(self, name: str) -> None:
+        if not self.skip_depth:
+            self.parts.append(f"&{name};")
+
+    def handle_charref(self, name: str) -> None:
+        if not self.skip_depth:
+            self.parts.append(f"&#{name};")
+
+    def get_html(self) -> str:
+        while self.open_tags:
+            self.parts.append(f"</{self.open_tags.pop()}>")
+        return "".join(self.parts)
+
+
+def _sanitize_body_html(body_html: str) -> str:
+    parser = _SafeHtmlParser()
+    parser.feed(body_html)
+    parser.close()
+    return parser.get_html()
+
+
 def _inline_images(body_html: str, zf: zipfile.ZipFile, chapter_zip_path: str) -> str:
-    img_pattern = re.compile(r'(<img\\b[^>]*\\bsrc=["\'])([^"\']+)(["\'][^>]*>)', re.IGNORECASE)
+    img_pattern = re.compile(r'(<img\b[^>]*\bsrc=["\'])([^"\']+)(["\'][^>]*>)', re.IGNORECASE)
 
     def replace(match: re.Match) -> str:
         prefix, src, suffix = match.groups()
@@ -119,6 +300,7 @@ def epub_to_long_html(epub_bytes: bytes) -> tuple[str, str]:
 
             body = _extract_body(xhtml_text)
             body = _inline_images(body, zf, chapter_zip_path)
+            body = _sanitize_body_html(body)
             chunks.append(f"<section class=\"chapter\">{body}</section>")
 
         if not chunks:
@@ -133,6 +315,11 @@ def index():
     return render_template("index.html")
 
 
+@app.errorhandler(RequestEntityTooLarge)
+def handle_file_too_large(_exc: RequestEntityTooLarge):
+    return jsonify({"error": "File is too large. Max size is 100MB."}), 413
+
+
 @app.post("/upload")
 def upload_epub():
     file = request.files.get("epub")
@@ -143,9 +330,6 @@ def upload_epub():
         return jsonify({"error": "Only .epub files are supported."}), 400
 
     file_bytes = file.read()
-    if len(file_bytes) > MAX_FILE_SIZE:
-        return jsonify({"error": "File is too large. Max size is 100MB."}), 400
-
     try:
         title, long_html = epub_to_long_html(file_bytes)
     except zipfile.BadZipFile:
@@ -157,4 +341,8 @@ def upload_epub():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(
+        host=os.environ.get("FLASK_HOST", "127.0.0.1"),
+        port=int(os.environ.get("PORT", "5000")),
+        debug=os.environ.get("FLASK_DEBUG") == "1",
+    )
