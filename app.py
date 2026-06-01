@@ -2,9 +2,11 @@ import os
 import base64
 import html
 import mimetypes
+import posixpath
 import re
 import zipfile
 from io import BytesIO
+from typing import BinaryIO
 from html.parser import HTMLParser
 from pathlib import PurePosixPath
 from urllib.parse import urlparse
@@ -19,6 +21,7 @@ app = Flask(__name__)
 
 CONTAINER_PATH = "META-INF/container.xml"
 MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB
+MAX_INLINE_IMAGE_SIZE = 5 * 1024 * 1024  # 5MB per image
 VOID_TAGS = {
     "area",
     "base",
@@ -145,8 +148,9 @@ def _parse_opf(zf: zipfile.ZipFile, opf_path: str):
 
 
 def _path_in_zip(base_file_path: str, relative_path: str) -> str:
-    base_dir = PurePosixPath(base_file_path).parent
-    return str((base_dir / relative_path).as_posix())
+    base_dir = PurePosixPath(base_file_path).parent.as_posix()
+    normalized = posixpath.normpath(posixpath.join(base_dir, relative_path))
+    return normalized.lstrip("/")
 
 
 def _extract_body(xhtml_text: str) -> str:
@@ -266,6 +270,9 @@ def _inline_images(body_html: str, zf: zipfile.ZipFile, chapter_zip_path: str) -
         except KeyError:
             return match.group(0)
 
+        if len(image_bytes) > MAX_INLINE_IMAGE_SIZE:
+            return match.group(0)
+
         mime_type, _ = mimetypes.guess_type(src)
         if not mime_type:
             mime_type = "application/octet-stream"
@@ -277,8 +284,9 @@ def _inline_images(body_html: str, zf: zipfile.ZipFile, chapter_zip_path: str) -
     return img_pattern.sub(replace, body_html)
 
 
-def epub_to_chapters(epub_bytes: bytes) -> tuple[str, list[dict]]:
-    with zipfile.ZipFile(BytesIO(epub_bytes)) as zf:
+def epub_to_chapters(epub_source: bytes | BinaryIO) -> tuple[str, list[dict]]:
+    source = BytesIO(epub_source) if isinstance(epub_source, bytes) else epub_source
+    with zipfile.ZipFile(source) as zf:
         opf_path = _get_opf_path(zf)
         title, manifest, spine_ids = _parse_opf(zf, opf_path)
 
@@ -328,9 +336,10 @@ def upload_epub():
     if not file.filename.lower().endswith(".epub"):
         return jsonify({"error": "Only .epub files are supported."}), 400
 
-    file_bytes = file.read()
     try:
-        title, chapters = epub_to_chapters(file_bytes)
+        if hasattr(file.stream, "seek"):
+            file.stream.seek(0)
+        title, chapters = epub_to_chapters(file.stream)
     except zipfile.BadZipFile:
         return jsonify({"error": "Invalid EPUB file."}), 400
     except Exception as exc:

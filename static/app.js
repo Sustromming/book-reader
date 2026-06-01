@@ -33,6 +33,14 @@ let virtualReader = null;
 let pretextLib = null;
 let recomputeRaf = 0;
 
+function closeSettingsDialog() {
+  if (typeof settingsDialog.close === 'function') {
+    settingsDialog.close();
+  } else {
+    settingsDialog.removeAttribute('open');
+  }
+}
+
 (async () => {
   try {
     pretextLib = await import('https://esm.sh/@chenglou/pretext');
@@ -381,18 +389,21 @@ async function uploadFile(file) {
   }
 
   setStatus('Parsing EPUB...');
-  if (virtualReader) {
-    virtualReader.destroy();
-    virtualReader = null;
-  }
-  reader.innerHTML = '';
 
   const formData = new FormData();
   formData.append('epub', file);
 
   try {
     const response = await fetch('/upload', { method: 'POST', body: formData });
-    const payload = await response.json();
+    let payload = null;
+    try {
+      payload = await response.json();
+    } catch (_err) {
+      if (!response.ok) {
+        throw new Error(`Upload failed (${response.status}).`);
+      }
+      throw new Error('Server returned an invalid response.');
+    }
 
     if (!response.ok) {
       throw new Error(payload.error || 'Upload failed.');
@@ -407,6 +418,10 @@ async function uploadFile(file) {
       throw new Error('No readable chapters found.');
     }
 
+    if (virtualReader) {
+      virtualReader.destroy();
+    }
+    reader.innerHTML = '';
     virtualReader = new VirtualReader(reader, measureNode);
     setStatus(`Measuring 0 / ${chapters.length} chapters...`);
     await virtualReader.load(chapters, (done, total) => {
@@ -473,7 +488,7 @@ settingsOpenBtn.addEventListener('click', () => {
 
 settingsDialog.addEventListener('click', (evt) => {
   if (evt.target === settingsDialog) {
-    settingsDialog.close();
+    closeSettingsDialog();
   }
 });
 
