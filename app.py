@@ -277,12 +277,12 @@ def _inline_images(body_html: str, zf: zipfile.ZipFile, chapter_zip_path: str) -
     return img_pattern.sub(replace, body_html)
 
 
-def epub_to_long_html(epub_bytes: bytes) -> tuple[str, str]:
+def epub_to_chapters(epub_bytes: bytes) -> tuple[str, list[dict]]:
     with zipfile.ZipFile(BytesIO(epub_bytes)) as zf:
         opf_path = _get_opf_path(zf)
         title, manifest, spine_ids = _parse_opf(zf, opf_path)
 
-        chunks = []
+        chapters: list[dict] = []
         for spine_id in spine_ids:
             item = manifest.get(spine_id)
             if not item:
@@ -301,13 +301,12 @@ def epub_to_long_html(epub_bytes: bytes) -> tuple[str, str]:
             body = _extract_body(xhtml_text)
             body = _inline_images(body, zf, chapter_zip_path)
             body = _sanitize_body_html(body)
-            chunks.append(f"<section class=\"chapter\">{body}</section>")
+            chapters.append({"html": body})
 
-        if not chunks:
+        if not chapters:
             raise ValueError("No readable HTML chapters found in EPUB spine.")
 
-        long_html = "\n".join(chunks)
-        return title, long_html
+        return title, chapters
 
 
 @app.get("/")
@@ -331,13 +330,13 @@ def upload_epub():
 
     file_bytes = file.read()
     try:
-        title, long_html = epub_to_long_html(file_bytes)
+        title, chapters = epub_to_chapters(file_bytes)
     except zipfile.BadZipFile:
         return jsonify({"error": "Invalid EPUB file."}), 400
     except Exception as exc:
         return jsonify({"error": f"Failed to parse EPUB: {html.escape(str(exc))}"}), 400
 
-    return jsonify({"title": title, "html": long_html})
+    return jsonify({"title": title, "chapters": chapters})
 
 
 if __name__ == "__main__":

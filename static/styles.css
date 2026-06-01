@@ -214,8 +214,22 @@ body {
   overflow-wrap: break-word;
 }
 
+.reader-measure {
+  position: absolute;
+  top: -200000px;
+  left: 0;
+  width: var(--reader-measure-width, 760px);
+  visibility: hidden;
+  pointer-events: none;
+  contain: layout style;
+}
+
 .reader .chapter {
   margin-bottom: 2.2em;
+}
+
+.reader .chapter-placeholder {
+  contain: strict;
 }
 
 .reader img {
