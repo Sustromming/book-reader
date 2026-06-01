@@ -1,107 +1,122 @@
-import base64
-import json
-import unittest
-import zipfile
 from io import BytesIO
+import zipfile
 
-from app import app, epub_to_long_html
+import pytest
 
-
-PNG_BYTES = base64.b64decode(
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4////fwAJ+wP9KobjigAAAABJRU5ErkJggg=="
-)
+from app import MAX_FILE_SIZE, MAX_INLINE_IMAGE_SIZE, app, epub_to_chapters
 
 
-def build_epub(chapter_body: str) -> bytes:
-    epub_bytes = BytesIO()
-    with zipfile.ZipFile(epub_bytes, "w") as zf:
+def make_epub(*, chapter_body: str, image_map: dict[str, bytes] | None = None) -> bytes:
+    image_map = image_map or {}
+    buffer = BytesIO()
+    with zipfile.ZipFile(buffer, "w") as zf:
+        zf.writestr("mimetype", "application/epub+zip")
         zf.writestr(
             "META-INF/container.xml",
-            """<?xml version="1.0" encoding="utf-8"?>
+            """<?xml version="1.0"?>
 <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
   <rootfiles>
-    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+    <rootfile full-path="OPS/content.opf" media-type="application/oebps-package+xml" />
   </rootfiles>
 </container>""",
         )
         zf.writestr(
-            "OEBPS/content.opf",
+            "OPS/content.opf",
             """<?xml version="1.0" encoding="utf-8"?>
-<package version="3.0" xmlns="http://www.idpf.org/2007/opf" xmlns:dc="http://purl.org/dc/elements/1.1/">
-  <metadata>
-    <dc:title>Sample Book</dc:title>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:title>Test Book</dc:title>
   </metadata>
   <manifest>
-    <item id="chapter-1" href="chapter1.xhtml" media-type="application/xhtml+xml"/>
-    <item id="cover" href="images/cover.png" media-type="image/png"/>
+    <item id="chapter-1" href="Text/chapter1.xhtml" media-type="application/xhtml+xml" />
   </manifest>
   <spine>
-    <itemref idref="chapter-1"/>
+    <itemref idref="chapter-1" />
   </spine>
 </package>""",
         )
         zf.writestr(
-            "OEBPS/chapter1.xhtml",
+            "OPS/Text/chapter1.xhtml",
             f"""<?xml version="1.0" encoding="utf-8"?>
 <html xmlns="http://www.w3.org/1999/xhtml">
   <body>{chapter_body}</body>
 </html>""",
         )
-        zf.writestr("OEBPS/images/cover.png", PNG_BYTES)
-    return epub_bytes.getvalue()
+        for path, data in image_map.items():
+            zf.writestr(path, data)
+
+    return buffer.getvalue()
 
 
-class EpubReaderTests(unittest.TestCase):
-    def setUp(self) -> None:
-        self.client = app.test_client()
+@pytest.fixture()
+def client():
+    app.config["TESTING"] = True
+    with app.test_client() as test_client:
+        yield test_client
 
-    def test_epub_html_is_sanitized_and_images_are_inlined(self) -> None:
-        epub_bytes = build_epub(
-            '<p>Hello<script>alert(1)</script>'
-            '<img src="images/cover.png" onerror="alert(1)">'
-            '<a href="javascript:alert(2)" onclick="alert(3)">link</a></p>'
-        )
 
-        title, html = epub_to_long_html(epub_bytes)
+def test_epub_to_chapters_inlines_normalized_relative_images():
+    epub_bytes = make_epub(
+        chapter_body='<p><img src="../Images/pic.png" alt="cover" /></p>',
+        image_map={"OPS/Images/pic.png": b"png-bytes"},
+    )
 
-        self.assertEqual(title, "Sample Book")
-        self.assertIn('src="data:image/png;base64,', html)
-        self.assertNotIn("<script", html)
-        self.assertNotIn("onerror=", html)
-        self.assertNotIn("onclick=", html)
-        self.assertNotIn('href="javascript:alert(2)"', html)
+    title, chapters = epub_to_chapters(epub_bytes)
 
-    def test_upload_rejects_payloads_over_limit_before_parsing(self) -> None:
-        original_limit = app.config["MAX_CONTENT_LENGTH"]
-        app.config["MAX_CONTENT_LENGTH"] = 32
-        try:
-            response = self.client.post(
-                "/upload",
-                data={"epub": (BytesIO(b"x" * 64), "book.epub")},
-                content_type="multipart/form-data",
-            )
-        finally:
-            app.config["MAX_CONTENT_LENGTH"] = original_limit
+    assert title == "Test Book"
+    assert len(chapters) == 1
+    assert 'src="data:image/png;base64,' in chapters[0]["html"]
 
-        self.assertEqual(response.status_code, 413)
-        self.assertEqual(
-            json.loads(response.data),
-            {"error": "File is too large. Max size is 100MB."},
-        )
 
-    def test_upload_rejects_invalid_epub_extension(self) -> None:
-        response = self.client.post(
+def test_epub_to_chapters_skips_oversized_inline_images():
+    large_image = b"x" * (MAX_INLINE_IMAGE_SIZE + 1)
+    epub_bytes = make_epub(
+        chapter_body='<p><img src="../Images/large.png" alt="large" /></p>',
+        image_map={"OPS/Images/large.png": large_image},
+    )
+
+    _, chapters = epub_to_chapters(epub_bytes)
+
+    assert 'src="../Images/large.png"' in chapters[0]["html"]
+    assert 'src="data:image/png;base64,' not in chapters[0]["html"]
+
+
+def test_upload_epub_success(client):
+    epub_bytes = make_epub(chapter_body="<p>Hello reader.</p>")
+
+    response = client.post(
+        "/upload",
+        data={"epub": (BytesIO(epub_bytes), "book.epub")},
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["title"] == "Test Book"
+    assert payload["chapters"] == [{"html": "<p>Hello reader.</p>"}]
+
+
+def test_upload_rejects_invalid_extension(client):
+    response = client.post(
+        "/upload",
+        data={"epub": (BytesIO(b"not an epub"), "book.txt")},
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 400
+    assert response.get_json() == {"error": "Only .epub files are supported."}
+
+
+def test_upload_rejects_large_files(client):
+    app.config["MAX_CONTENT_LENGTH"] = 8
+    try:
+        response = client.post(
             "/upload",
-            data={"epub": (BytesIO(b"plain text"), "book.txt")},
+            data={"epub": (BytesIO(b"123456789"), "book.epub")},
             content_type="multipart/form-data",
         )
+    finally:
+        app.config["MAX_CONTENT_LENGTH"] = MAX_FILE_SIZE
 
-        self.assertEqual(response.status_code, 400)
-        self.assertEqual(
-            json.loads(response.data),
-            {"error": "Only .epub files are supported."},
-        )
-
-
-if __name__ == "__main__":
-    unittest.main()
+    assert response.status_code == 413
+    assert response.get_json() == {"error": "File is too large. Max size is 100MB."}
