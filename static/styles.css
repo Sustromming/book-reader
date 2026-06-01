@@ -10,7 +10,17 @@
   --glow-a: hsl(calc(var(--hue) + 30) 95% 85% / 0.2);
   --glow-b: hsl(calc(var(--hue) - 20) 82% 75% / 0.18);
   --bg-top: hsl(calc(var(--hue) + 5) 68% 90%);
+  --font-serif: Georgia, "Times New Roman", serif;
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Consolas, "Liberation Mono", monospace;
+  --reader-font-family: var(--font-serif);
+  --reader-font-size: clamp(17px, 1.4vw, 20px);
+  --reader-max-width: 760px;
 }
+
+:root[data-font="serif"] { --reader-font-family: var(--font-serif); }
+:root[data-font="sans"]  { --reader-font-family: var(--font-sans); }
+:root[data-font="mono"]  { --reader-font-family: var(--font-mono); }
 
 :root[data-theme="dark"] {
   --bg: hsl(var(--hue) 36% 10%);
@@ -38,39 +48,126 @@ body {
   transition: color 180ms ease, background 300ms ease;
 }
 
-.topbar {
-  position: sticky;
-  top: 0;
-  z-index: 2;
+.settings-fab {
+  position: fixed;
+  top: 14px;
+  right: 14px;
+  z-index: 3;
+  border: 1px solid color-mix(in hsl, var(--line) 70%, transparent);
+  border-radius: 999px;
+  background: color-mix(in hsl, var(--panel) 75%, transparent);
+  color: var(--ink);
+  padding: 7px 14px;
+  font-size: 0.85rem;
+  font-family: inherit;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+  opacity: 0.7;
+  transition: opacity 150ms ease, background 200ms ease;
+}
+
+.settings-fab:hover,
+.settings-fab:focus-visible {
+  opacity: 1;
+}
+
+.settings-dialog {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel);
+  color: var(--ink);
+  padding: 18px 20px;
+  width: min(420px, 92vw);
+  box-shadow: 0 20px 60px rgb(0 0 0 / 0.25);
+}
+
+.settings-dialog::backdrop {
+  background: rgb(0 0 0 / 0.45);
+  backdrop-filter: blur(2px);
+}
+
+.settings-form {
+  display: grid;
+  gap: 14px;
+}
+
+.settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.settings-header h2 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.settings-close {
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 8px;
+  opacity: 0.6;
+}
+
+.settings-close:hover {
+  opacity: 1;
+}
+
+.setting-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  background: color-mix(in hsl, var(--panel) 86%, transparent);
-  border-bottom: 1px solid var(--line);
-  backdrop-filter: blur(4px);
-  padding: 10px 14px;
 }
 
-.topbar h1 {
-  margin: 0;
-  font-size: 1.1rem;
-  font-weight: 600;
+.setting-row > span,
+.setting-row > label {
+  font-size: 0.95rem;
 }
 
-.theme-toggle {
+.size-control {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  justify-content: flex-end;
+}
+
+.size-control input[type="range"] {
+  flex: 1;
+  max-width: 180px;
+  accent-color: var(--accent);
+}
+
+.size-value {
+  min-width: 3.5ch;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.9rem;
+  color: var(--status);
+}
+
+.control {
   border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--panel);
   color: var(--ink);
-  padding: 8px 12px;
+  padding: 7px 12px;
   font-size: 0.9rem;
   cursor: pointer;
+  font-family: inherit;
+  appearance: none;
+  -webkit-appearance: none;
 }
 
 .layout {
-  width: min(980px, 95vw);
-  margin: 20px auto 30px;
+  width: min(var(--reader-max-width), 95vw);
+  margin: 24px auto 30px;
   display: grid;
   gap: 16px;
 }
@@ -112,7 +209,8 @@ body {
   border-radius: 12px;
   padding: clamp(16px, 2vw, 28px);
   line-height: 1.7;
-  font-size: clamp(17px, 1.4vw, 20px);
+  font-family: var(--reader-font-family);
+  font-size: var(--reader-font-size);
   overflow-wrap: break-word;
 }
 
@@ -130,12 +228,13 @@ body {
     width: 96vw;
   }
 
-  .topbar h1 {
-    font-size: 1rem;
+  .settings-fab,
+  .control {
+    padding: 6px 10px;
+    font-size: 0.85rem;
   }
 
-  .theme-toggle {
-    padding: 7px 10px;
-    font-size: 0.85rem;
+  .size-control input[type="range"] {
+    max-width: 140px;
   }
 }
