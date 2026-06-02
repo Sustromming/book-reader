@@ -11,6 +11,10 @@ const readerWidthInput = document.getElementById('reader-width');
 const readerWidthValue = document.getElementById('reader-width-value');
 const settingsDialog = document.getElementById('settings-dialog');
 const settingsOpenBtn = document.getElementById('settings-open');
+const newBookBtn = document.getElementById('new-book');
+const bookHeader = document.getElementById('book-header');
+const bookTitle = document.getElementById('book-title');
+const layout = document.querySelector('.layout');
 
 const BASE_TITLE = 'EPUB Reader';
 const THEME_KEY = 'epub_reader_theme';
@@ -39,6 +43,19 @@ function closeSettingsDialog() {
     settingsDialog.close();
   } else {
     settingsDialog.removeAttribute('open');
+  }
+  settingsOpenBtn.setAttribute('aria-expanded', 'false');
+}
+
+settingsDialog.addEventListener('close', () => {
+  settingsOpenBtn.setAttribute('aria-expanded', 'false');
+});
+
+function safeSetItem(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch (err) {
+    // localStorage may be disabled (private mode) or full; ignore.
   }
 }
 
@@ -79,8 +96,8 @@ function updateAdaptiveHue() {
 function setTheme(theme) {
   const resolved = theme === 'dark' ? 'dark' : 'light';
   document.documentElement.setAttribute('data-theme', resolved);
-  localStorage.setItem(THEME_KEY, resolved);
   themeToggle.textContent = resolved === 'dark' ? 'Light Theme' : 'Dark Theme';
+  safeSetItem(THEME_KEY, resolved);
 }
 
 function initTheme() {
@@ -92,30 +109,30 @@ function initTheme() {
 function setFontFamily(font) {
   const resolved = FONT_OPTIONS.has(font) ? font : 'serif';
   document.documentElement.setAttribute('data-font', resolved);
-  localStorage.setItem(FONT_KEY, resolved);
   fontFamilySelect.value = resolved;
+  safeSetItem(FONT_KEY, resolved);
 }
 
 function setFontSize(size) {
-  const parsed = Number.parseInt(size, 10);
+  const parsed = Number.parseInt(String(size).replace(/px$/i, ''), 10);
   const resolved = Number.isFinite(parsed)
     ? Math.min(SIZE_MAX, Math.max(SIZE_MIN, parsed))
     : SIZE_DEFAULT;
   document.documentElement.style.setProperty('--reader-font-size', `${resolved}px`);
-  localStorage.setItem(SIZE_KEY, String(resolved));
   fontSizeInput.value = String(resolved);
   fontSizeValue.textContent = `${resolved}px`;
+  safeSetItem(SIZE_KEY, String(resolved));
 }
 
 function setReaderWidth(width) {
-  const parsed = Number.parseInt(width, 10);
+  const parsed = Number.parseInt(String(width).replace(/px$/i, ''), 10);
   const resolved = Number.isFinite(parsed)
     ? Math.min(WIDTH_MAX, Math.max(WIDTH_MIN, parsed))
     : WIDTH_DEFAULT;
   document.documentElement.style.setProperty('--reader-max-width', `${resolved}px`);
-  localStorage.setItem(WIDTH_KEY, String(resolved));
   readerWidthInput.value = String(resolved);
   readerWidthValue.textContent = `${resolved}px`;
+  safeSetItem(WIDTH_KEY, String(resolved));
 }
 
 function initReaderPrefs() {
@@ -427,8 +444,13 @@ async function uploadFile(file) {
       throw new Error(payload.error || 'Upload failed.');
     }
 
-    document.title = payload.title ? `${payload.title} - ${BASE_TITLE}` : BASE_TITLE;
-    baseHue = hashToHue(payload.title || file.name);
+    const title = (payload.title || '').trim() || 'Untitled';
+    document.title = `${title} - ${BASE_TITLE}`;
+    bookTitle.textContent = title;
+    bookHeader.hidden = false;
+    layout.classList.add('has-book');
+    newBookBtn.hidden = false;
+    baseHue = hashToHue(title || file.name);
     updateAdaptiveHue();
 
     const chapters = Array.isArray(payload.chapters) ? payload.chapters : [];
@@ -447,7 +469,7 @@ async function uploadFile(file) {
     });
 
     setStatus('Loaded. Scroll to read.');
-    window.scrollTo({ top: reader.offsetTop - 16, behavior: 'smooth' });
+    window.scrollTo({ top: bookHeader.offsetTop, behavior: 'smooth' });
   } catch (err) {
     setStatus(err.message);
   }
@@ -460,7 +482,7 @@ async function uploadFile(file) {
   });
 });
 
-['dragleave', 'drop'].forEach((evtName) => {
+['dragleave'].forEach((evtName) => {
   dropzone.addEventListener(evtName, (evt) => {
     evt.preventDefault();
     dropzone.classList.remove('active');
@@ -468,8 +490,37 @@ async function uploadFile(file) {
 });
 
 dropzone.addEventListener('drop', (evt) => {
+  evt.preventDefault();
+  dropzone.classList.remove('active');
   const file = evt.dataTransfer?.files?.[0];
-  uploadFile(file);
+  if (file) uploadFile(file);
+});
+
+let pageDragDepth = 0;
+['dragenter', 'dragover'].forEach((evtName) => {
+  document.addEventListener(evtName, (evt) => {
+    if (dropzone.contains(evt.target)) return;
+    evt.preventDefault();
+    if (evtName === 'dragenter' && layout.classList.contains('has-book')) {
+      pageDragDepth += 1;
+      document.body.classList.add('page-dragging');
+    }
+  });
+});
+['dragleave'].forEach((evtName) => {
+  document.addEventListener(evtName, (evt) => {
+    if (dropzone.contains(evt.target)) return;
+    pageDragDepth = Math.max(0, pageDragDepth - 1);
+    if (pageDragDepth === 0) document.body.classList.remove('page-dragging');
+  });
+});
+document.addEventListener('drop', (evt) => {
+  if (dropzone.contains(evt.target)) return;
+  evt.preventDefault();
+  pageDragDepth = 0;
+  document.body.classList.remove('page-dragging');
+  const file = evt.dataTransfer?.files?.[0];
+  if (file) uploadFile(file);
 });
 
 input.addEventListener('change', () => {
@@ -502,6 +553,13 @@ settingsOpenBtn.addEventListener('click', () => {
   } else {
     settingsDialog.setAttribute('open', '');
   }
+  settingsOpenBtn.setAttribute('aria-expanded', 'true');
+  const firstControl = settingsDialog.querySelector('.control');
+  if (firstControl) firstControl.focus();
+});
+
+newBookBtn.addEventListener('click', () => {
+  input.click();
 });
 
 settingsDialog.addEventListener('click', (evt) => {

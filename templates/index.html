@@ -7,9 +7,15 @@
   <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
-  <button id="settings-open" class="settings-fab" type="button" aria-label="Open settings" aria-haspopup="dialog">
-    Settings
-  </button>
+  <div class="fab-group">
+    <button id="new-book" class="settings-fab" type="button" aria-label="Load new book" hidden>
+      New book
+    </button>
+    <button id="settings-open" class="settings-fab" type="button" aria-label="Open settings"
+            aria-haspopup="dialog" aria-controls="settings-dialog" aria-expanded="false">
+      Settings
+    </button>
+  </div>
 
   <dialog id="settings-dialog" class="settings-dialog" aria-labelledby="settings-title">
     <form method="dialog" class="settings-form">
@@ -19,7 +25,7 @@
       </div>
 
       <div class="setting-row">
-        <span>Theme</span>
+        <label for="theme-toggle">Theme</label>
         <button id="theme-toggle" class="control" type="button" aria-label="Toggle theme">Dark Theme</button>
       </div>
 
@@ -59,7 +65,11 @@
       <p id="status" class="status">Waiting for file...</p>
     </section>
 
-    <article id="reader" class="reader" aria-live="polite"></article>
+    <header class="book-header" id="book-header" hidden>
+      <h1 class="book-title" id="book-title"></h1>
+    </header>
+
+    <article id="reader" class="reader"></article>
     <div id="reader-measure" class="reader reader-measure" aria-hidden="true"></div>
   </main>
 
