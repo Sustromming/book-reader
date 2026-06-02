@@ -26,6 +26,7 @@ const WIDTH_MAX = 1100;
 const WIDTH_DEFAULT = 760;
 const MEDIA_SELECTOR = 'img, table, figure, picture, svg, canvas, video, audio, iframe, math';
 const MOUNT_ROOT_MARGIN = '1200px 0px';
+const RECOMPUTE_CHUNK_SIZE = 2;
 
 let baseHue = 28;
 let rafLocked = false;
@@ -160,6 +161,8 @@ class VirtualReader {
     this.chapters = [];
     this.observer = null;
     this._aborted = false;
+    this._recomputeToken = 0;
+    this._recomputePromise = null;
   }
 
   destroy() {
@@ -288,59 +291,73 @@ class VirtualReader {
 
   recompute() {
     if (this.chapters.length === 0) return;
-    syncMeasureWidth();
-    const readerStyle = window.getComputedStyle(reader);
-    const baseFontSize = Number.parseFloat(readerStyle.fontSize) || SIZE_DEFAULT;
-    const fontFamily = readerStyle.fontFamily;
-    const innerWidth = reader.clientWidth - parsePxList(readerStyle.paddingLeft, readerStyle.paddingRight);
-    const currentInnerWidth = Math.max(1, innerWidth);
+    this._recomputeToken += 1;
+    if (this._recomputePromise) return;
+    const token = this._recomputeToken;
+    this._recomputePromise = this._runRecompute(token);
+  }
 
-    for (const ch of this.chapters) {
-      if (!ch.blocks) continue;
-      let delta = 0;
-      const widthScale = currentInnerWidth / Math.max(1, ch.originalContentWidth);
+  async _runRecompute(token) {
+    try {
+      syncMeasureWidth();
+      const readerStyle = window.getComputedStyle(reader);
+      const baseFontSize = Number.parseFloat(readerStyle.fontSize) || SIZE_DEFAULT;
+      const fontFamily = readerStyle.fontFamily;
+      const innerWidth = reader.clientWidth - parsePxList(readerStyle.paddingLeft, readerStyle.paddingRight);
+      const currentInnerWidth = Math.max(1, innerWidth);
 
-      for (const block of ch.blocks) {
-        if (block.kind !== 'text') continue;
-        const newFontSize = block.fontSizeRatio * baseFontSize;
-        const newLineHeight = block.lineHeightRatio * newFontSize;
-        const newContentWidth = Math.max(1, block.contentWidthRatio * currentInnerWidth * 1);
-        const widthForLayout = newContentWidth * 1;
-        const fontStr = buildFontString(block, newFontSize, fontFamily);
+      for (let i = 0; i < this.chapters.length; i += 1) {
+        if (this._aborted || token !== this._recomputeToken) return;
+        const ch = this.chapters[i];
+        if (ch.mounted || !ch.blocks) continue;
+        this._recomputeChapter(ch, baseFontSize, fontFamily, currentInnerWidth);
+        if (((i + 1) % RECOMPUTE_CHUNK_SIZE) === 0) {
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        }
+      }
+    } finally {
+      this._recomputePromise = null;
+      if (!this._aborted && token !== this._recomputeToken) {
+        this.recompute();
+      }
+    }
+  }
 
-        let innerHeight = block.originalHeight - block.paddingY - block.borderY;
-        if (pretextLib && typeof pretextLib.prepare === 'function') {
-          try {
-            const opts = block.letterSpacing
-              ? { letterSpacing: block.letterSpacing }
-              : undefined;
-            const prepared = pretextLib.prepare(block.text, fontStr, opts);
-            const result = pretextLib.layout(prepared, widthForLayout, newLineHeight);
-            innerHeight = result.height;
-          } catch (err) {
-            // fall back to scaled estimate below
-            innerHeight = (block.originalHeight - block.paddingY - block.borderY)
-              * (newLineHeight / block.lineHeightPx)
-              * (block.contentWidth / Math.max(1, newContentWidth));
-          }
-        } else {
+  _recomputeChapter(ch, baseFontSize, fontFamily, currentInnerWidth) {
+    let delta = 0;
+    for (const block of ch.blocks) {
+      if (block.kind !== 'text') continue;
+      const newFontSize = block.fontSizeRatio * baseFontSize;
+      const newLineHeight = block.lineHeightRatio * newFontSize;
+      const newContentWidth = Math.max(1, block.contentWidthRatio * currentInnerWidth);
+      const fontStr = buildFontString(block, newFontSize, fontFamily);
+
+      let innerHeight;
+      if (pretextLib && typeof pretextLib.prepare === 'function') {
+        try {
+          const opts = block.letterSpacing
+            ? { letterSpacing: block.letterSpacing }
+            : undefined;
+          const prepared = pretextLib.prepare(block.text, fontStr, opts);
+          const result = pretextLib.layout(prepared, newContentWidth, newLineHeight);
+          innerHeight = result.height;
+        } catch (err) {
           innerHeight = (block.originalHeight - block.paddingY - block.borderY)
             * (newLineHeight / block.lineHeightPx)
             * (block.contentWidth / Math.max(1, newContentWidth));
         }
-
-        const newHeight = innerHeight + block.paddingY + block.borderY;
-        delta += newHeight - block.originalHeight;
-        block.height = newHeight;
-        // ignore unused widthScale
-        void widthScale;
+      } else {
+        innerHeight = (block.originalHeight - block.paddingY - block.borderY)
+          * (newLineHeight / block.lineHeightPx)
+          * (block.contentWidth / Math.max(1, newContentWidth));
       }
 
-      const predicted = Math.max(40, ch.originalChapterHeight + delta);
-      if (!ch.mounted) {
-        ch.element.style.height = `${predicted}px`;
-      }
+      const newHeight = innerHeight + block.paddingY + block.borderY;
+      delta += newHeight - block.originalHeight;
+      block.height = newHeight;
     }
+
+    ch.element.style.height = `${Math.max(40, ch.originalChapterHeight + delta)}px`;
   }
 
   _onIntersect(entries) {
