@@ -44,6 +44,7 @@ function closeSettingsDialog() {
 (async () => {
   try {
     pretextLib = await import('https://esm.sh/@chenglou/pretext');
+    scheduleRecompute();
   } catch (err) {
     console.warn('Pretext failed to load; falling back to DOM remeasurement.', err);
   }
