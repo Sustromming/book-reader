@@ -81,6 +81,27 @@ def test_epub_to_chapters_skips_oversized_inline_images():
     assert 'src="data:image/png;base64,' not in chapters[0]["html"]
 
 
+def test_epub_to_chapters_preserves_safe_style_and_strips_unsafe():
+    epub_bytes = make_epub(
+        chapter_body=(
+            '<p><span style="color:#fff">Alpha</span> '
+            '<em style="background:#000">Beta</em> '
+            '<b style="font-weight:bold;color:red">Gamma</b> '
+            '<i style="display:none;position:fixed">Delta</i></p>'
+        ),
+    )
+
+    _, chapters = epub_to_chapters(epub_bytes)
+
+    html = chapters[0]["html"]
+    assert "color: #fff" in html, f"safe color should be preserved, got: {html}"
+    assert html.count("background") == 0, f"unsafe background should be stripped, got: {html}"
+    assert "font-weight: bold" in html, f"safe font-weight should be preserved, got: {html}"
+    assert "color: red" in html, f"safe color should be preserved, got: {html}"
+    assert "display" not in html, f"unsafe display should be stripped, got: {html}"
+    assert "position" not in html, f"unsafe position should be stripped, got: {html}"
+
+
 def test_upload_epub_success(client):
     epub_bytes = make_epub(chapter_body="<p>Hello reader.</p>")
 
