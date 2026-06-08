@@ -262,6 +262,11 @@ body.page-dragging::after {
   display: none;
 }
 
+.layout:not(.has-book) .reader,
+.layout:not(.has-book) .reader-measure {
+  display: none;
+}
+
 .settings-dialog {
   border: 1px solid var(--line);
   border-radius: 14px;
