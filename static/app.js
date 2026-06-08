@@ -3,12 +3,20 @@ const input = document.getElementById('epub-input');
 const statusEl = document.getElementById('status');
 const reader = document.getElementById('reader');
 const measureNode = document.getElementById('reader-measure');
-const themeToggle = document.getElementById('theme-toggle');
+const themeSelect = document.getElementById('theme-select');
 const fontFamilySelect = document.getElementById('font-family');
 const fontSizeInput = document.getElementById('font-size');
 const fontSizeValue = document.getElementById('font-size-value');
 const readerWidthInput = document.getElementById('reader-width');
 const readerWidthValue = document.getElementById('reader-width-value');
+const brightnessInput = document.getElementById('brightness');
+const brightnessValue = document.getElementById('brightness-value');
+const contrastInput = document.getElementById('contrast');
+const contrastValue = document.getElementById('contrast-value');
+const sepiaInput = document.getElementById('sepia');
+const sepiaValue = document.getElementById('sepia-value');
+const grayscaleInput = document.getElementById('grayscale');
+const grayscaleValue = document.getElementById('grayscale-value');
 const settingsDialog = document.getElementById('settings-dialog');
 const settingsOpenBtn = document.getElementById('settings-open');
 const newBookBtn = document.getElementById('new-book');
@@ -21,19 +29,39 @@ const THEME_KEY = 'epub_reader_theme';
 const FONT_KEY = 'epub_reader_font';
 const SIZE_KEY = 'epub_reader_size';
 const WIDTH_KEY = 'epub_reader_width';
+const BRIGHTNESS_KEY = 'epub_reader_brightness';
+const CONTRAST_KEY = 'epub_reader_contrast';
+const SEPIA_KEY = 'epub_reader_sepia';
+const GRAYSCALE_KEY = 'epub_reader_grayscale';
 const FONT_OPTIONS = new Set(['serif', 'sans', 'mono']);
+const THEME_OPTIONS = new Set([
+  'light', 'sepia', 'dark', 'black', 'nord', 'dracula',
+  'gruvbox-dark', 'catppuccin-dark', 'solarized-dark', 'system',
+]);
 const SIZE_MIN = 10;
 const SIZE_MAX = 26;
 const SIZE_DEFAULT = 17;
 const WIDTH_MIN = 520;
 const WIDTH_MAX = 1100;
 const WIDTH_DEFAULT = 760;
+const BRIGHTNESS_MIN = 50;
+const BRIGHTNESS_MAX = 150;
+const BRIGHTNESS_DEFAULT = 100;
+const CONTRAST_MIN = 50;
+const CONTRAST_MAX = 150;
+const CONTRAST_DEFAULT = 100;
+const SEPIA_MIN = 0;
+const SEPIA_MAX = 100;
+const SEPIA_DEFAULT = 0;
+const GRAYSCALE_MIN = 0;
+const GRAYSCALE_MAX = 100;
+const GRAYSCALE_DEFAULT = 0;
 const MEDIA_SELECTOR = 'img, table, figure, picture, svg, canvas, video, audio, iframe, math';
 const MOUNT_ROOT_MARGIN = '1200px 0px';
 const RECOMPUTE_CHUNK_SIZE = 2;
 
 let baseHue = 28;
-let rafLocked = false;
+
 let virtualReader = null;
 let pretextLib = null;
 let recomputeRaf = 0;
@@ -82,28 +110,21 @@ function setHue(hue) {
 }
 
 function updateAdaptiveHue() {
-  if (rafLocked) return;
-  rafLocked = true;
-  window.requestAnimationFrame(() => {
-    const maxScroll = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
-    const progress = window.scrollY / maxScroll;
-    const adaptiveHue = (baseHue + Math.floor(progress * 120)) % 360;
-    setHue(adaptiveHue);
-    rafLocked = false;
-  });
+  setHue(baseHue);
 }
 
 function setTheme(theme) {
-  const resolved = theme === 'dark' ? 'dark' : 'light';
+  const resolved = THEME_OPTIONS.has(theme) ? theme : 'light';
   document.documentElement.setAttribute('data-theme', resolved);
-  themeToggle.textContent = resolved === 'dark' ? 'Light Theme' : 'Dark Theme';
+  themeSelect.value = resolved;
   safeSetItem(THEME_KEY, resolved);
 }
 
 function initTheme() {
   const saved = localStorage.getItem(THEME_KEY);
   const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-  setTheme(saved || (prefersDark ? 'dark' : 'light'));
+  const fallback = prefersDark ? 'dark' : 'light';
+  setTheme(saved || fallback);
 }
 
 function setFontFamily(font) {
@@ -135,10 +156,52 @@ function setReaderWidth(width) {
   safeSetItem(WIDTH_KEY, String(resolved));
 }
 
+function clampInt(value, min, max, fallback) {
+  const n = Number.parseInt(String(value), 10);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, n));
+}
+
+function setBrightness(value) {
+  const resolved = clampInt(value, BRIGHTNESS_MIN, BRIGHTNESS_MAX, BRIGHTNESS_DEFAULT);
+  document.documentElement.style.setProperty('--reader-brightness', `${resolved}%`);
+  brightnessInput.value = String(resolved);
+  brightnessValue.textContent = `${resolved}%`;
+  safeSetItem(BRIGHTNESS_KEY, String(resolved));
+}
+
+function setContrast(value) {
+  const resolved = clampInt(value, CONTRAST_MIN, CONTRAST_MAX, CONTRAST_DEFAULT);
+  document.documentElement.style.setProperty('--reader-contrast', `${resolved}%`);
+  contrastInput.value = String(resolved);
+  contrastValue.textContent = `${resolved}%`;
+  safeSetItem(CONTRAST_KEY, String(resolved));
+}
+
+function setSepia(value) {
+  const resolved = clampInt(value, SEPIA_MIN, SEPIA_MAX, SEPIA_DEFAULT);
+  document.documentElement.style.setProperty('--reader-sepia', `${resolved}%`);
+  sepiaInput.value = String(resolved);
+  sepiaValue.textContent = `${resolved}%`;
+  safeSetItem(SEPIA_KEY, String(resolved));
+}
+
+function setGrayscale(value) {
+  const resolved = clampInt(value, GRAYSCALE_MIN, GRAYSCALE_MAX, GRAYSCALE_DEFAULT);
+  document.documentElement.style.setProperty('--reader-grayscale', `${resolved}%`);
+  grayscaleInput.value = String(resolved);
+  grayscaleValue.textContent = `${resolved}%`;
+  safeSetItem(GRAYSCALE_KEY, String(resolved));
+}
+
 function initReaderPrefs() {
   setFontFamily(localStorage.getItem(FONT_KEY) || 'serif');
   setFontSize(localStorage.getItem(SIZE_KEY) || SIZE_DEFAULT);
   setReaderWidth(localStorage.getItem(WIDTH_KEY) || WIDTH_DEFAULT);
+  setBrightness(localStorage.getItem(BRIGHTNESS_KEY) || BRIGHTNESS_DEFAULT);
+  setContrast(localStorage.getItem(CONTRAST_KEY) || CONTRAST_DEFAULT);
+  setSepia(localStorage.getItem(SEPIA_KEY) || SEPIA_DEFAULT);
+  setGrayscale(localStorage.getItem(GRAYSCALE_KEY) || GRAYSCALE_DEFAULT);
 }
 
 function setStatus(text) {
@@ -527,9 +590,8 @@ input.addEventListener('change', () => {
   uploadFile(input.files?.[0]);
 });
 
-themeToggle.addEventListener('click', () => {
-  const current = document.documentElement.getAttribute('data-theme');
-  setTheme(current === 'dark' ? 'light' : 'dark');
+themeSelect.addEventListener('change', () => {
+  setTheme(themeSelect.value);
 });
 
 fontFamilySelect.addEventListener('change', () => {
@@ -545,6 +607,22 @@ fontSizeInput.addEventListener('input', () => {
 readerWidthInput.addEventListener('input', () => {
   setReaderWidth(readerWidthInput.value);
   scheduleRecompute();
+});
+
+brightnessInput.addEventListener('input', () => {
+  setBrightness(brightnessInput.value);
+});
+
+contrastInput.addEventListener('input', () => {
+  setContrast(contrastInput.value);
+});
+
+sepiaInput.addEventListener('input', () => {
+  setSepia(sepiaInput.value);
+});
+
+grayscaleInput.addEventListener('input', () => {
+  setGrayscale(grayscaleInput.value);
 });
 
 settingsOpenBtn.addEventListener('click', () => {
@@ -568,7 +646,6 @@ settingsDialog.addEventListener('click', (evt) => {
   }
 });
 
-window.addEventListener('scroll', updateAdaptiveHue, { passive: true });
 window.addEventListener('resize', () => {
   syncMeasureWidth();
   scheduleRecompute();

@@ -25,8 +25,51 @@
       </div>
 
       <div class="setting-row">
-        <label for="theme-toggle">Theme</label>
-        <button id="theme-toggle" class="control" type="button" aria-label="Toggle theme">Dark Theme</button>
+        <label for="theme-select">Theme</label>
+        <select id="theme-select" class="control">
+          <option value="light">Light</option>
+          <option value="sepia">Sepia</option>
+          <option value="dark">Dark</option>
+          <option value="black">Black (AMOLED)</option>
+          <option value="nord">Nord</option>
+          <option value="dracula">Dracula</option>
+          <option value="gruvbox-dark">Gruvbox Dark</option>
+          <option value="catppuccin-dark">Catppuccin Dark</option>
+          <option value="solarized-dark">Solarized Dark</option>
+          <option value="system">System (auto)</option>
+        </select>
+      </div>
+
+      <div class="setting-row">
+        <label for="brightness">Brightness</label>
+        <div class="size-control">
+          <input id="brightness" type="range" min="50" max="150" step="1" />
+          <span id="brightness-value" class="size-value">100%</span>
+        </div>
+      </div>
+
+      <div class="setting-row">
+        <label for="contrast">Contrast</label>
+        <div class="size-control">
+          <input id="contrast" type="range" min="50" max="150" step="1" />
+          <span id="contrast-value" class="size-value">100%</span>
+        </div>
+      </div>
+
+      <div class="setting-row">
+        <label for="sepia">Sepia</label>
+        <div class="size-control">
+          <input id="sepia" type="range" min="0" max="100" step="1" />
+          <span id="sepia-value" class="size-value">0%</span>
+        </div>
+      </div>
+
+      <div class="setting-row">
+        <label for="grayscale">Grayscale</label>
+        <div class="size-control">
+          <input id="grayscale" type="range" min="0" max="100" step="1" />
+          <span id="grayscale-value" class="size-value">0%</span>
+        </div>
       </div>
 
       <div class="setting-row">

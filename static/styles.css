@@ -1,38 +1,176 @@
 :root {
   --hue: 28;
-  --bg: hsl(var(--hue) 45% 94%);
-  --panel: hsl(var(--hue) 55% 98%);
-  --ink: hsl(var(--hue) 30% 14%);
-  --accent: hsl(var(--hue) 70% 38%);
-  --line: hsl(var(--hue) 30% 78%);
-  --status: hsl(var(--hue) 22% 32%);
-  --drop-active: hsl(var(--hue) 90% 94%);
-  --glow-a: hsl(calc(var(--hue) + 30) 95% 85% / 0.2);
-  --glow-b: hsl(calc(var(--hue) - 20) 82% 75% / 0.18);
-  --bg-top: hsl(calc(var(--hue) + 5) 68% 90%);
+  --bg: #f1ead9;
+  --panel: #faf6ec;
+  --ink: oklch(25% 0.10 var(--hue));
+  --accent: oklch(36% 0.14 var(--hue));
+  --line: #d6cbb6;
+  --status: oklch(30% 0.10 var(--hue));
+  --drop-active: #ece2cc;
+  --glow-a: hsl(35 60% 75% / 0.18);
+  --glow-b: hsl(20 55% 65% / 0.14);
+  --bg-top: #e8dcc4;
   --font-serif: Georgia, "Times New Roman", serif;
   --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: ui-monospace, "SF Mono", Consolas, "Liberation Mono", monospace;
   --reader-font-family: var(--font-serif);
   --reader-font-size: clamp(17px, 1.4vw, 20px);
   --reader-max-width: 760px;
+  --reader-brightness: 100%;
+  --reader-contrast: 100%;
+  --reader-sepia: 0%;
+  --reader-grayscale: 0%;
 }
 
 :root[data-font="serif"] { --reader-font-family: var(--font-serif); }
 :root[data-font="sans"]  { --reader-font-family: var(--font-sans); }
 :root[data-font="mono"]  { --reader-font-family: var(--font-mono); }
 
+:root[data-theme="light"] {
+  --bg: #f1ead9;
+  --panel: #faf6ec;
+  --ink: oklch(25% 0.10 var(--hue));
+  --accent: oklch(36% 0.14 var(--hue));
+  --line: #d6cbb6;
+  --status: oklch(30% 0.10 var(--hue));
+  --drop-active: #ece2cc;
+  --glow-a: hsl(35 60% 75% / 0.18);
+  --glow-b: hsl(20 55% 65% / 0.14);
+  --bg-top: #e8dcc4;
+}
+
+:root[data-theme="sepia"] {
+  --bg: #f4ecd8;
+  --panel: #fbf5e6;
+  --ink: #5b4636;
+  --accent: oklch(40% 0.13 var(--hue));
+  --line: #d8c9a4;
+  --status: #6b5742;
+  --drop-active: #ebe0c4;
+  --glow-a: hsl(35 55% 75% / 0.16);
+  --glow-b: hsl(28 50% 65% / 0.12);
+  --bg-top: #ecdfc4;
+}
+
+:root[data-theme="black"] {
+  --bg: #000000;
+  --panel: #0a0a0a;
+  --ink: #d0d0d0;
+  --accent: oklch(75% 0.16 var(--hue));
+  --line: #1f1f1f;
+  --status: #a8a8a8;
+  --drop-active: #141414;
+  --glow-a: hsl(0 0% 15% / 0.3);
+  --glow-b: hsl(0 0% 8% / 0.25);
+  --bg-top: #050505;
+}
+
 :root[data-theme="dark"] {
-  --bg: hsl(var(--hue) 36% 10%);
-  --panel: hsl(var(--hue) 28% 14%);
-  --ink: hsl(calc(var(--hue) + 20) 35% 88%);
-  --accent: hsl(calc(var(--hue) + 52) 92% 64%);
-  --line: hsl(var(--hue) 30% 26%);
-  --status: hsl(var(--hue) 28% 74%);
-  --drop-active: hsl(var(--hue) 40% 19%);
-  --glow-a: hsl(calc(var(--hue) + 35) 88% 32% / 0.22);
-  --glow-b: hsl(calc(var(--hue) - 15) 72% 28% / 0.2);
-  --bg-top: hsl(calc(var(--hue) + 12) 46% 18%);
+  --bg: #2b231a;
+  --panel: #382c20;
+  --ink: oklch(86% 0.10 var(--hue));
+  --accent: oklch(78% 0.18 var(--hue));
+  --line: #4a3d2c;
+  --status: oklch(78% 0.10 var(--hue));
+  --drop-active: #3a2e20;
+  --glow-a: hsl(35 45% 30% / 0.25);
+  --glow-b: hsl(20 40% 22% / 0.2);
+  --bg-top: #36291c;
+}
+
+:root[data-theme="nord"] {
+  --bg: #2e3440;
+  --panel: #3b4252;
+  --ink: #eceff4;
+  --accent: oklch(80% 0.12 220);
+  --line: #434c5e;
+  --status: #d8dee9;
+  --drop-active: #3b4252;
+  --glow-a: hsl(220 30% 25% / 0.3);
+  --glow-b: hsl(220 25% 20% / 0.25);
+  --bg-top: #353c4a;
+}
+
+:root[data-theme="dracula"] {
+  --bg: #282b36;
+  --panel: #343746;
+  --ink: #f8f8f2;
+  --accent: oklch(80% 0.18 320);
+  --line: #44475a;
+  --status: #e6e6dc;
+  --drop-active: #363846;
+  --glow-a: hsl(260 30% 25% / 0.3);
+  --glow-b: hsl(260 25% 20% / 0.25);
+  --bg-top: #2f3240;
+}
+
+:root[data-theme="gruvbox-dark"] {
+  --bg: #282828;
+  --panel: #3c3836;
+  --ink: #ebdbb2;
+  --accent: oklch(80% 0.16 80);
+  --line: #504945;
+  --status: #d5c4a1;
+  --drop-active: #3a3735;
+  --glow-a: hsl(40 25% 22% / 0.3);
+  --glow-b: hsl(40 20% 18% / 0.25);
+  --bg-top: #322e2c;
+}
+
+:root[data-theme="catppuccin-dark"] {
+  --bg: #1e1e2e;
+  --panel: #181825;
+  --ink: #cdd6f4;
+  --accent: oklch(80% 0.16 290);
+  --line: #313244;
+  --status: #bac2de;
+  --drop-active: #1a1a26;
+  --glow-a: hsl(270 30% 22% / 0.3);
+  --glow-b: hsl(270 25% 18% / 0.25);
+  --bg-top: #232334;
+}
+
+:root[data-theme="solarized-dark"] {
+  --bg: #002b36;
+  --panel: #073642;
+  --ink: #93a1a1;
+  --accent: oklch(80% 0.14 80);
+  --line: #0a4750;
+  --status: #839496;
+  --drop-active: #063038;
+  --glow-a: hsl(192 50% 15% / 0.3);
+  --glow-b: hsl(192 40% 10% / 0.25);
+  --bg-top: #032d39;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"] {
+    --bg: #2b231a;
+    --panel: #382c20;
+    --ink: oklch(86% 0.10 var(--hue));
+    --accent: oklch(78% 0.18 var(--hue));
+    --line: #4a3d2c;
+    --status: oklch(78% 0.10 var(--hue));
+    --drop-active: #3a2e20;
+    --glow-a: hsl(35 45% 30% / 0.25);
+    --glow-b: hsl(20 40% 22% / 0.2);
+    --bg-top: #36291c;
+  }
+}
+
+@media (prefers-color-scheme: light) {
+  :root[data-theme="system"] {
+    --bg: #f1ead9;
+    --panel: #faf6ec;
+    --ink: oklch(25% 0.10 var(--hue));
+    --accent: oklch(36% 0.14 var(--hue));
+    --line: #d6cbb6;
+    --status: oklch(30% 0.10 var(--hue));
+    --drop-active: #ece2cc;
+    --glow-a: hsl(35 60% 75% / 0.18);
+    --glow-b: hsl(20 55% 65% / 0.14);
+    --bg-top: #e8dcc4;
+  }
 }
 
 * { box-sizing: border-box; }
@@ -257,6 +395,9 @@ body.page-dragging::after {
 }
 
 .reader {
+  position: relative;
+  max-width: var(--reader-max-width);
+  margin: 32px auto 80px;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 12px;
@@ -264,7 +405,20 @@ body.page-dragging::after {
   line-height: 1.7;
   font-family: var(--reader-font-family);
   font-size: var(--reader-font-size);
+  color: var(--ink);
   overflow-wrap: break-word;
+  filter: brightness(var(--reader-brightness)) contrast(var(--reader-contrast))
+          sepia(var(--reader-sepia)) grayscale(var(--reader-grayscale));
+  transition: filter 180ms ease;
+}
+
+.reader .chapter,
+.reader .chapter * {
+  color: inherit;
+}
+
+.reader .chapter a {
+  text-decoration-color: currentColor;
 }
 
 .reader-measure {

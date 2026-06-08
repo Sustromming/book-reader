@@ -91,7 +91,7 @@ ALLOWED_TAGS = {
     "u",
     "ul",
 }
-GLOBAL_ATTRS = {"class", "id", "lang", "role", "title", "dir"}
+GLOBAL_ATTRS = {"class", "id", "lang", "role", "title", "dir", "style"}
 TAG_ATTRS = {
     "a": {"href", "name", "target", "rel"},
     "blockquote": {"cite"},
@@ -170,6 +170,28 @@ def _is_safe_url(value: str, *, for_image: bool) -> bool:
     return True
 
 
+_SAFE_STYLE_PROPS = {"color", "background-color", "font-style", "font-weight", "text-decoration"}
+
+
+def _sanitize_style(value: str) -> str:
+    safe_parts: list[str] = []
+    for declaration in value.split(";"):
+        declaration = declaration.strip()
+        if not declaration or ":" not in declaration:
+            continue
+        prop, _, val = declaration.partition(":")
+        prop = prop.strip().lower()
+        val = val.strip()
+        if prop not in _SAFE_STYLE_PROPS:
+            continue
+        if not val:
+            continue
+        if any(ch in val for ch in (";", "expression", "url(", "javascript:", "&#")):
+            continue
+        safe_parts.append(f"{prop}: {val}")
+    return "; ".join(safe_parts)
+
+
 class _SafeHtmlParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__(convert_charrefs=False)
@@ -204,6 +226,10 @@ class _SafeHtmlParser(HTMLParser):
                 continue
             if attr_name in {"href", "src"} and not _is_safe_url(attr_value, for_image=tag == "img"):
                 continue
+            if attr_name == "style":
+                attr_value = _sanitize_style(attr_value)
+                if not attr_value:
+                    continue
             escaped_value = html.escape(attr_value, quote=True)
             cleaned_attrs.append(f'{attr_name}="{escaped_value}"')
 
