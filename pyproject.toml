@@ -1,0 +1,21 @@
+[project]
+name = "epub-reader"
+version = "0.1.0"
+description = "A Flask-based EPUB reader"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "Flask==3.1.0",
+]
+
+[dependency-groups]
+dev = [
+  "pytest==8.3.5",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.uv]
+package = false

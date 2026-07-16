@@ -11,8 +11,9 @@ It converts an `.epub` into one long-form HTML document and embeds it directly i
 - Chapter merge into long-form HTML
 - Inline chapter images as data URLs
 - In-browser reading view
-- Light/Dark theme toggle
+- Multiple reader themes and typography controls
 - Adaptive color spectrum that shifts while scrolling
+- Keyboard-accessible upload and full-document search/print support
 
 ## Tech Stack
 
@@ -25,29 +26,35 @@ It converts an `.epub` into one long-form HTML document and embeds it directly i
 ```text
 .
 ├── app.py
-├── requirements.txt
+├── pyproject.toml
+├── uv.lock
 ├── templates/
 │   └── index.html
 ├── static/
 │   ├── app.js
 │   └── styles.css
+├── tests/
+│   └── test_app.py
 └── README.md
 ```
 
 ## Quick Start
 
-1. Create and activate virtual environment:
+1. Install the locked environment:
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate 
-pip install -r requirements.txt 
-python3 app.py
+uv sync
 ```
 
-4. Open in browser:
+2. Run the development server:
 
 ```bash
+uv run python app.py
+```
+
+3. Open in browser:
+
+```text
 http://127.0.0.1:5000
 ```
 
@@ -57,7 +64,7 @@ http://127.0.0.1:5000
 2. Drag and drop an `.epub` file into the drop zone (or click **Choose file**).
 3. Wait for parsing to complete.
 4. Read in the rendered long-form view.
-5. Use **Dark Theme / Light Theme** toggle in the header.
+5. Use **Settings** to change the theme, typography, and reading filters.
 
 ## API
 
@@ -71,7 +78,13 @@ Uploads and parses a single EPUB file.
 ```json
 {
   "title": "Book Title",
-  "html": "<section class=\"chapter\">...</section>"
+  "language": "en",
+  "chapters": [
+    {
+      "id": "chapter-1",
+      "html": "<p>...</p>"
+    }
+  ]
 }
 ```
 
@@ -87,15 +100,23 @@ Uploads and parses a single EPUB file.
 
 - Supported upload type: `.epub` only
 - Max file size: 100 MB
-- Parsing depends on valid EPUB/OPF structure
-- Remote assets referenced by chapter HTML are not fetched
+- EPUBs with invalid structure, missing spine documents, suspicious compression, or excessive output are rejected
+- Local raster images up to 5 MB are embedded as data URLs; unsupported or remote images are removed
+- EPUB-local chapter links are rewritten to work in the continuous reader
+- Unexpected server failures return a generic error and are logged server-side
 
 ## Development
 
 Syntax check:
 
 ```bash
-python3 -m py_compile app.py
+uv run python -m py_compile app.py
+```
+
+Run tests:
+
+```bash
+uv run pytest -q
 ```
 
 ## License
