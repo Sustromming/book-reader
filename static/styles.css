@@ -2,10 +2,11 @@
   --hue: 28;
   --bg: #f1ead9;
   --panel: #faf6ec;
-  --ink: oklch(25% 0.10 var(--hue));
-  --accent: oklch(36% 0.14 var(--hue));
+  --ink: hsl(var(--hue) 25% 25%);
+  --accent: hsl(var(--hue) 40% 34%);
+  --accent-ink: #fff;
   --line: #d6cbb6;
-  --status: oklch(30% 0.10 var(--hue));
+  --status: hsl(var(--hue) 25% 30%);
   --drop-active: #ece2cc;
   --glow-a: hsl(35 60% 75% / 0.18);
   --glow-b: hsl(20 55% 65% / 0.14);
@@ -29,10 +30,11 @@
 :root[data-theme="light"] {
   --bg: #f1ead9;
   --panel: #faf6ec;
-  --ink: oklch(25% 0.10 var(--hue));
-  --accent: oklch(36% 0.14 var(--hue));
+  --ink: hsl(var(--hue) 25% 25%);
+  --accent: hsl(var(--hue) 40% 34%);
+  --accent-ink: #fff;
   --line: #d6cbb6;
-  --status: oklch(30% 0.10 var(--hue));
+  --status: hsl(var(--hue) 25% 30%);
   --drop-active: #ece2cc;
   --glow-a: hsl(35 60% 75% / 0.18);
   --glow-b: hsl(20 55% 65% / 0.14);
@@ -43,7 +45,8 @@
   --bg: #f4ecd8;
   --panel: #fbf5e6;
   --ink: #5b4636;
-  --accent: oklch(40% 0.13 var(--hue));
+  --accent: hsl(var(--hue) 30% 40%);
+  --accent-ink: #fff;
   --line: #d8c9a4;
   --status: #6b5742;
   --drop-active: #ebe0c4;
@@ -56,7 +59,8 @@
   --bg: #000000;
   --panel: #0a0a0a;
   --ink: #d0d0d0;
-  --accent: oklch(75% 0.16 var(--hue));
+  --accent: hsl(var(--hue) 55% 65%);
+  --accent-ink: #101010;
   --line: #1f1f1f;
   --status: #a8a8a8;
   --drop-active: #141414;
@@ -68,10 +72,11 @@
 :root[data-theme="dark"] {
   --bg: #2b231a;
   --panel: #382c20;
-  --ink: oklch(86% 0.10 var(--hue));
-  --accent: oklch(78% 0.18 var(--hue));
+  --ink: hsl(var(--hue) 25% 86%);
+  --accent: hsl(var(--hue) 55% 68%);
+  --accent-ink: #1b1713;
   --line: #4a3d2c;
-  --status: oklch(78% 0.10 var(--hue));
+  --status: hsl(var(--hue) 25% 78%);
   --drop-active: #3a2e20;
   --glow-a: hsl(35 45% 30% / 0.25);
   --glow-b: hsl(20 40% 22% / 0.2);
@@ -82,7 +87,8 @@
   --bg: #2e3440;
   --panel: #3b4252;
   --ink: #eceff4;
-  --accent: oklch(80% 0.12 220);
+  --accent: hsl(220 40% 70%);
+  --accent-ink: #202733;
   --line: #434c5e;
   --status: #d8dee9;
   --drop-active: #3b4252;
@@ -95,7 +101,8 @@
   --bg: #282b36;
   --panel: #343746;
   --ink: #f8f8f2;
-  --accent: oklch(80% 0.18 320);
+  --accent: hsl(320 55% 72%);
+  --accent-ink: #282b36;
   --line: #44475a;
   --status: #e6e6dc;
   --drop-active: #363846;
@@ -108,7 +115,8 @@
   --bg: #282828;
   --panel: #3c3836;
   --ink: #ebdbb2;
-  --accent: oklch(80% 0.16 80);
+  --accent: hsl(80 55% 70%);
+  --accent-ink: #282828;
   --line: #504945;
   --status: #d5c4a1;
   --drop-active: #3a3735;
@@ -121,7 +129,8 @@
   --bg: #1e1e2e;
   --panel: #181825;
   --ink: #cdd6f4;
-  --accent: oklch(80% 0.16 290);
+  --accent: hsl(290 55% 72%);
+  --accent-ink: #1e1e2e;
   --line: #313244;
   --status: #bac2de;
   --drop-active: #1a1a26;
@@ -134,7 +143,8 @@
   --bg: #002b36;
   --panel: #073642;
   --ink: #93a1a1;
-  --accent: oklch(80% 0.14 80);
+  --accent: hsl(80 50% 70%);
+  --accent-ink: #002b36;
   --line: #0a4750;
   --status: #839496;
   --drop-active: #063038;
@@ -147,10 +157,11 @@
   :root[data-theme="system"] {
     --bg: #2b231a;
     --panel: #382c20;
-    --ink: oklch(86% 0.10 var(--hue));
-    --accent: oklch(78% 0.18 var(--hue));
+    --ink: hsl(var(--hue) 25% 86%);
+    --accent: hsl(var(--hue) 55% 68%);
+    --accent-ink: #1b1713;
     --line: #4a3d2c;
-    --status: oklch(78% 0.10 var(--hue));
+    --status: hsl(var(--hue) 25% 78%);
     --drop-active: #3a2e20;
     --glow-a: hsl(35 45% 30% / 0.25);
     --glow-b: hsl(20 40% 22% / 0.2);
@@ -162,10 +173,11 @@
   :root[data-theme="system"] {
     --bg: #f1ead9;
     --panel: #faf6ec;
-    --ink: oklch(25% 0.10 var(--hue));
-    --accent: oklch(36% 0.14 var(--hue));
+    --ink: hsl(var(--hue) 25% 25%);
+    --accent: hsl(var(--hue) 40% 34%);
+    --accent-ink: #fff;
     --line: #d6cbb6;
-    --status: oklch(30% 0.10 var(--hue));
+    --status: hsl(var(--hue) 25% 30%);
     --drop-active: #ece2cc;
     --glow-a: hsl(35 60% 75% / 0.18);
     --glow-b: hsl(20 55% 65% / 0.14);
@@ -193,19 +205,23 @@ body {
   z-index: 3;
   display: flex;
   gap: 8px;
+  max-width: calc(100vw - 28px);
 }
 
 .settings-fab {
-  border: 1px solid color-mix(in hsl, var(--line) 70%, transparent);
+  border: 1px solid var(--line);
+  border-color: color-mix(in hsl, var(--line) 70%, transparent);
   border-radius: 999px;
+  background: var(--panel);
   background: color-mix(in hsl, var(--panel) 75%, transparent);
   color: var(--ink);
   padding: 7px 14px;
+  min-height: 44px;
   font-size: 0.85rem;
   font-family: inherit;
   cursor: pointer;
   backdrop-filter: blur(6px);
-  opacity: 0.7;
+  opacity: 0.9;
   transition: opacity 150ms ease, background 200ms ease;
 }
 
@@ -220,6 +236,7 @@ body.page-dragging::before {
   inset: 10px;
   border: 3px dashed var(--accent);
   border-radius: 14px;
+  background: var(--panel);
   background: color-mix(in hsl, var(--panel) 60%, transparent);
   z-index: 2;
   pointer-events: none;
@@ -262,8 +279,7 @@ body.page-dragging::after {
   display: none;
 }
 
-.layout:not(.has-book) .reader,
-.layout:not(.has-book) .reader-measure {
+.layout:not(.has-book) .reader {
   display: none;
 }
 
@@ -357,13 +373,11 @@ body.page-dragging::after {
   font-size: 0.9rem;
   cursor: pointer;
   font-family: inherit;
-  appearance: none;
-  -webkit-appearance: none;
 }
 
 .layout {
   width: min(var(--reader-max-width), 95vw);
-  margin: 24px auto 30px;
+  margin: 76px auto 30px;
   display: grid;
   gap: 16px;
 }
@@ -376,27 +390,44 @@ body.page-dragging::after {
   text-align: center;
 }
 
+.dropzone h1 {
+  margin: 0 0 12px;
+  font-size: 1.35rem;
+}
+
 .dropzone.active {
   background: var(--drop-active);
 }
 
 .file-btn {
   display: inline-block;
+  border: 0;
   cursor: pointer;
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-ink);
   border-radius: 8px;
   padding: 10px 14px;
+  min-height: 44px;
+  font: inherit;
 }
 
-#epub-input {
-  display: none;
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .status {
-  margin-top: 12px;
+  margin: -8px 0 0;
   min-height: 1.2em;
   color: var(--status);
+  text-align: center;
 }
 
 .reader {
@@ -426,16 +457,6 @@ body.page-dragging::after {
   text-decoration-color: currentColor;
 }
 
-.reader-measure {
-  position: absolute;
-  top: -200000px;
-  left: 0;
-  width: var(--reader-measure-width, 760px);
-  visibility: hidden;
-  pointer-events: none;
-  contain: layout style;
-}
-
 .reader .chapter {
   margin-bottom: 2.2em;
 }
@@ -449,9 +470,34 @@ body.page-dragging::after {
   height: auto;
 }
 
+.reader table,
+.reader pre {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.reader table {
+  display: block;
+}
+
+.reader pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.reader a:focus-visible,
+.book-title:focus-visible,
+.file-btn:focus-visible,
+.settings-fab:focus-visible,
+.control:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+
 @media (max-width: 700px) {
   .layout {
     width: 96vw;
+    margin-top: 82px;
   }
 
   .settings-fab,
@@ -462,5 +508,50 @@ body.page-dragging::after {
 
   .size-control input[type="range"] {
     max-width: 140px;
+  }
+
+  .fab-group {
+    right: 8px;
+    gap: 4px;
+  }
+
+  .settings-fab {
+    padding-inline: 10px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media print {
+  body {
+    background: #fff;
+    color: #000;
+  }
+
+  .fab-group,
+  .dropzone,
+  .status,
+  .settings-dialog {
+    display: none !important;
+  }
+
+  .layout {
+    width: 100%;
+    margin: 0;
+  }
+
+  .reader {
+    max-width: none;
+    margin: 0;
+    border: 0;
+    padding: 0;
+    filter: none;
   }
 }

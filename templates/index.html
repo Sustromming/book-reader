@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>EPUB Reader</title>
-  <link rel="stylesheet" href="/static/styles.css" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
 </head>
 <body>
   <div class="fab-group">
@@ -100,22 +100,22 @@
   </dialog>
 
   <main class="layout">
-    <section id="dropzone" class="dropzone" aria-label="EPUB upload area">
+    <section id="dropzone" class="dropzone" data-upload-url="{{ url_for('upload_epub') }}" aria-labelledby="upload-title">
+      <h1 id="upload-title">Open a book</h1>
       <p><strong>Drag and drop your .epub here</strong></p>
       <p>or</p>
-      <label class="file-btn" for="epub-input">Choose file</label>
-      <input id="epub-input" type="file" accept=".epub" />
-      <p id="status" class="status">Waiting for file...</p>
+      <button id="choose-book" class="file-btn" type="button">Choose file</button>
+      <input id="epub-input" class="visually-hidden" type="file" accept=".epub" aria-label="EPUB file" />
     </section>
+    <p id="status" class="status" role="status" aria-live="polite">Waiting for file...</p>
 
     <header class="book-header" id="book-header" hidden>
-      <h1 class="book-title" id="book-title"></h1>
+      <h1 class="book-title" id="book-title" tabindex="-1"></h1>
     </header>
 
-    <article id="reader" class="reader"></article>
-    <div id="reader-measure" class="reader reader-measure" aria-hidden="true"></div>
+    <article id="reader" class="reader" aria-label="Book content"></article>
   </main>
 
-  <script src="/static/app.js" type="module" defer></script>
+  <script src="{{ url_for('static', filename='app.js') }}" type="module" defer></script>
 </body>
 </html>

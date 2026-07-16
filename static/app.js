@@ -1,8 +1,8 @@
 const dropzone = document.getElementById('dropzone');
 const input = document.getElementById('epub-input');
+const chooseBookBtn = document.getElementById('choose-book');
 const statusEl = document.getElementById('status');
 const reader = document.getElementById('reader');
-const measureNode = document.getElementById('reader-measure');
 const themeSelect = document.getElementById('theme-select');
 const fontFamilySelect = document.getElementById('font-family');
 const fontSizeInput = document.getElementById('font-size');
@@ -25,6 +25,7 @@ const bookTitle = document.getElementById('book-title');
 const layout = document.querySelector('.layout');
 
 const BASE_TITLE = 'EPUB Reader';
+const MAX_FILE_SIZE = 100 * 1024 * 1024;
 const THEME_KEY = 'epub_reader_theme';
 const FONT_KEY = 'epub_reader_font';
 const SIZE_KEY = 'epub_reader_size';
@@ -56,45 +57,41 @@ const SEPIA_DEFAULT = 0;
 const GRAYSCALE_MIN = 0;
 const GRAYSCALE_MAX = 100;
 const GRAYSCALE_DEFAULT = 0;
-const MEDIA_SELECTOR = 'img, table, figure, picture, svg, canvas, video, audio, iframe, math';
-const MOUNT_ROOT_MARGIN = '1200px 0px';
-const RECOMPUTE_CHUNK_SIZE = 2;
 
 let baseHue = 28;
+let hueRaf = 0;
+let activeUploadController = null;
+let uploadSequence = 0;
 
-let virtualReader = null;
-let pretextLib = null;
-let recomputeRaf = 0;
+function safeGetItem(key) {
+  try {
+    return localStorage.getItem(key);
+  } catch (_err) {
+    return null;
+  }
+}
+
+function safeSetItem(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch (_err) {
+    // Storage may be disabled or full.
+  }
+}
 
 function closeSettingsDialog() {
-  if (typeof settingsDialog.close === 'function') {
+  if (typeof settingsDialog.close === 'function' && settingsDialog.open) {
     settingsDialog.close();
   } else {
     settingsDialog.removeAttribute('open');
   }
   settingsOpenBtn.setAttribute('aria-expanded', 'false');
+  settingsOpenBtn.focus();
 }
 
 settingsDialog.addEventListener('close', () => {
   settingsOpenBtn.setAttribute('aria-expanded', 'false');
 });
-
-function safeSetItem(key, value) {
-  try {
-    localStorage.setItem(key, value);
-  } catch (err) {
-    // localStorage may be disabled (private mode) or full; ignore.
-  }
-}
-
-(async () => {
-  try {
-    pretextLib = await import('https://esm.sh/@chenglou/pretext');
-    scheduleRecompute();
-  } catch (err) {
-    console.warn('Pretext failed to load; falling back to DOM remeasurement.', err);
-  }
-})();
 
 function hashToHue(value) {
   let hash = 0;
@@ -110,7 +107,17 @@ function setHue(hue) {
 }
 
 function updateAdaptiveHue() {
-  setHue(baseHue);
+  const scrollableHeight = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
+  const progress = Math.min(1, Math.max(0, window.scrollY / scrollableHeight));
+  setHue((baseHue + Math.round(progress * 120)) % 360);
+}
+
+function scheduleAdaptiveHue() {
+  if (hueRaf) return;
+  hueRaf = window.requestAnimationFrame(() => {
+    hueRaf = 0;
+    updateAdaptiveHue();
+  });
 }
 
 function setTheme(theme) {
@@ -121,10 +128,9 @@ function setTheme(theme) {
 }
 
 function initTheme() {
-  const saved = localStorage.getItem(THEME_KEY);
+  const saved = safeGetItem(THEME_KEY);
   const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-  const fallback = prefersDark ? 'dark' : 'light';
-  setTheme(saved || fallback);
+  setTheme(saved || (prefersDark ? 'dark' : 'light'));
 }
 
 function setFontFamily(font) {
@@ -195,319 +201,105 @@ function setGrayscale(value) {
 }
 
 function initReaderPrefs() {
-  setFontFamily(localStorage.getItem(FONT_KEY) || 'serif');
-  setFontSize(localStorage.getItem(SIZE_KEY) || SIZE_DEFAULT);
-  setReaderWidth(localStorage.getItem(WIDTH_KEY) || WIDTH_DEFAULT);
-  setBrightness(localStorage.getItem(BRIGHTNESS_KEY) || BRIGHTNESS_DEFAULT);
-  setContrast(localStorage.getItem(CONTRAST_KEY) || CONTRAST_DEFAULT);
-  setSepia(localStorage.getItem(SEPIA_KEY) || SEPIA_DEFAULT);
-  setGrayscale(localStorage.getItem(GRAYSCALE_KEY) || GRAYSCALE_DEFAULT);
+  setFontFamily(safeGetItem(FONT_KEY) || 'serif');
+  setFontSize(safeGetItem(SIZE_KEY) || SIZE_DEFAULT);
+  setReaderWidth(safeGetItem(WIDTH_KEY) || WIDTH_DEFAULT);
+  setBrightness(safeGetItem(BRIGHTNESS_KEY) || BRIGHTNESS_DEFAULT);
+  setContrast(safeGetItem(CONTRAST_KEY) || CONTRAST_DEFAULT);
+  setSepia(safeGetItem(SEPIA_KEY) || SEPIA_DEFAULT);
+  setGrayscale(safeGetItem(GRAYSCALE_KEY) || GRAYSCALE_DEFAULT);
 }
 
 function setStatus(text) {
   statusEl.textContent = text;
 }
 
-function syncMeasureWidth() {
-  const outer = reader.offsetWidth;
-  if (outer > 0) {
-    measureNode.style.setProperty('--reader-measure-width', `${outer}px`);
-  }
+function validPayload(payload) {
+  if (!payload || typeof payload !== 'object') return false;
+  if (typeof payload.title !== 'string') return false;
+  if (!Array.isArray(payload.chapters) || payload.chapters.length === 0) return false;
+  return payload.chapters.every((chapter) => (
+    chapter && typeof chapter === 'object' && typeof chapter.html === 'string'
+  ));
 }
 
-function canvasFontShorthand(style) {
-  const parts = [];
-  if (style.fontStyle && style.fontStyle !== 'normal') parts.push(style.fontStyle);
-  const weight = style.fontWeight;
-  if (weight && weight !== '400' && weight !== 'normal') parts.push(weight);
-  parts.push(style.fontSize);
-  parts.push(style.fontFamily);
-  return parts.join(' ');
-}
-
-function parsePxList(...values) {
-  let total = 0;
-  for (const v of values) {
-    const n = Number.parseFloat(v);
-    if (Number.isFinite(n)) total += n;
-  }
-  return total;
-}
-
-class VirtualReader {
-  constructor(container, measureContainer) {
-    this.container = container;
-    this.measureContainer = measureContainer;
-    this.chapters = [];
-    this.observer = null;
-    this._aborted = false;
-    this._recomputeToken = 0;
-    this._recomputePromise = null;
-  }
-
-  destroy() {
-    this._aborted = true;
-    if (this.observer) {
-      this.observer.disconnect();
-      this.observer = null;
+async function renderChapters(chapters, language) {
+  const fragment = document.createDocumentFragment();
+  for (let index = 0; index < chapters.length; index += 1) {
+    const payload = chapters[index];
+    const section = document.createElement('section');
+    section.className = 'chapter';
+    section.id = typeof payload.id === 'string' && /^chapter-\d+$/.test(payload.id)
+      ? payload.id
+      : `chapter-${index + 1}`;
+    if (typeof language === 'string' && /^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$/.test(language)) {
+      section.lang = language;
     }
-    for (const ch of this.chapters) {
-      ch.element.remove();
+    section.innerHTML = payload.html;
+    fragment.appendChild(section);
+    if ((index + 1) % 4 === 0) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
     }
-    this.chapters = [];
   }
+  return fragment;
+}
 
-  async load(chapterPayloads, onProgress) {
-    this._aborted = false;
-    this.observer = new IntersectionObserver(this._onIntersect.bind(this), {
-      root: null,
-      rootMargin: MOUNT_ROOT_MARGIN,
+async function waitForImages(container) {
+  const images = Array.from(container.querySelectorAll('img'));
+  await Promise.allSettled(images.map((image) => {
+    if (typeof image.decode === 'function') return image.decode().catch(() => undefined);
+    if (image.complete) return Promise.resolve();
+    return new Promise((resolve) => {
+      image.addEventListener('load', resolve, { once: true });
+      image.addEventListener('error', resolve, { once: true });
     });
-
-    const fragment = document.createDocumentFragment();
-    this.chapters = chapterPayloads.map((payload, i) => {
-      const el = document.createElement('section');
-      el.className = 'chapter chapter-placeholder';
-      el.dataset.chapterIndex = String(i);
-      el.style.minHeight = '120px';
-      fragment.appendChild(el);
-      return {
-        index: i,
-        html: payload.html,
-        element: el,
-        mounted: false,
-        blocks: null,
-        originalChapterHeight: 0,
-        originalContentWidth: 0,
-        originalBaseFontSize: SIZE_DEFAULT,
-      };
-    });
-    this.container.appendChild(fragment);
-
-    syncMeasureWidth();
-    for (let i = 0; i < this.chapters.length; i += 1) {
-      if (this._aborted) return;
-      const ch = this.chapters[i];
-      this._measureChapter(ch);
-      if (this.observer) this.observer.observe(ch.element);
-      if (typeof onProgress === 'function') onProgress(i + 1, this.chapters.length);
-      if ((i & 7) === 7) {
-        await new Promise((resolve) => setTimeout(resolve, 0));
-      }
-    }
-  }
-
-  _measureChapter(ch) {
-    this.measureContainer.innerHTML = '';
-    const wrapper = document.createElement('section');
-    wrapper.className = 'chapter';
-    wrapper.innerHTML = ch.html;
-    this.measureContainer.appendChild(wrapper);
-
-    const measureStyle = window.getComputedStyle(this.measureContainer);
-    const baseFontSize = Number.parseFloat(measureStyle.fontSize) || SIZE_DEFAULT;
-    const innerWidth = wrapper.clientWidth || this.measureContainer.clientWidth || WIDTH_DEFAULT;
-
-    const blocks = [];
-    for (const child of Array.from(wrapper.children)) {
-      const rect = child.getBoundingClientRect();
-      const style = window.getComputedStyle(child);
-      const marginY = parsePxList(style.marginTop, style.marginBottom);
-      const containsMedia = child.matches(MEDIA_SELECTOR) || child.querySelector(MEDIA_SELECTOR);
-      const text = (child.textContent || '').trim();
-
-      if (containsMedia || !text) {
-        blocks.push({
-          kind: 'media',
-          height: rect.height,
-          margin: marginY,
-        });
-        continue;
-      }
-
-      const fontSize = Number.parseFloat(style.fontSize) || baseFontSize;
-      const lineHeightRaw = style.lineHeight;
-      let lineHeight = Number.parseFloat(lineHeightRaw);
-      if (!Number.isFinite(lineHeight)) {
-        lineHeight = fontSize * 1.5;
-      }
-      const paddingX = parsePxList(style.paddingLeft, style.paddingRight);
-      const paddingY = parsePxList(style.paddingTop, style.paddingBottom);
-      const borderY = parsePxList(style.borderTopWidth, style.borderBottomWidth);
-      const contentWidth = Math.max(1, (child.clientWidth || innerWidth) - paddingX);
-
-      blocks.push({
-        kind: 'text',
-        text: child.textContent || '',
-        font: canvasFontShorthand(style),
-        fontFamily: style.fontFamily,
-        fontSizePx: fontSize,
-        fontWeight: style.fontWeight,
-        fontStyle: style.fontStyle,
-        lineHeightPx: lineHeight,
-        lineHeightRatio: lineHeight / fontSize,
-        fontSizeRatio: fontSize / baseFontSize,
-        letterSpacing: Number.parseFloat(style.letterSpacing) || 0,
-        contentWidth,
-        contentWidthRatio: contentWidth / Math.max(1, innerWidth),
-        paddingY,
-        borderY,
-        margin: marginY,
-        originalHeight: rect.height,
-        height: rect.height,
-      });
-    }
-
-    const totalHeight = wrapper.getBoundingClientRect().height;
-    ch.blocks = blocks;
-    ch.originalChapterHeight = totalHeight;
-    ch.originalContentWidth = innerWidth;
-    ch.originalBaseFontSize = baseFontSize;
-    ch.element.style.height = `${Math.max(40, totalHeight)}px`;
-    ch.element.style.minHeight = '';
-
-    this.measureContainer.innerHTML = '';
-  }
-
-  recompute() {
-    if (this.chapters.length === 0) return;
-    this._recomputeToken += 1;
-    if (this._recomputePromise) return;
-    const token = this._recomputeToken;
-    this._recomputePromise = this._runRecompute(token);
-  }
-
-  async _runRecompute(token) {
-    try {
-      syncMeasureWidth();
-      const readerStyle = window.getComputedStyle(reader);
-      const baseFontSize = Number.parseFloat(readerStyle.fontSize) || SIZE_DEFAULT;
-      const fontFamily = readerStyle.fontFamily;
-      const innerWidth = reader.clientWidth - parsePxList(readerStyle.paddingLeft, readerStyle.paddingRight);
-      const currentInnerWidth = Math.max(1, innerWidth);
-
-      for (let i = 0; i < this.chapters.length; i += 1) {
-        if (this._aborted || token !== this._recomputeToken) return;
-        const ch = this.chapters[i];
-        if (ch.mounted || !ch.blocks) continue;
-        this._recomputeChapter(ch, baseFontSize, fontFamily, currentInnerWidth);
-        if (((i + 1) % RECOMPUTE_CHUNK_SIZE) === 0) {
-          await new Promise((resolve) => setTimeout(resolve, 0));
-        }
-      }
-    } finally {
-      this._recomputePromise = null;
-      if (!this._aborted && token !== this._recomputeToken) {
-        this.recompute();
-      }
-    }
-  }
-
-  _recomputeChapter(ch, baseFontSize, fontFamily, currentInnerWidth) {
-    let delta = 0;
-    for (const block of ch.blocks) {
-      if (block.kind !== 'text') continue;
-      const newFontSize = block.fontSizeRatio * baseFontSize;
-      const newLineHeight = block.lineHeightRatio * newFontSize;
-      const newContentWidth = Math.max(1, block.contentWidthRatio * currentInnerWidth);
-      const fontStr = buildFontString(block, newFontSize, fontFamily);
-
-      let innerHeight;
-      if (pretextLib && typeof pretextLib.prepare === 'function') {
-        try {
-          const opts = block.letterSpacing
-            ? { letterSpacing: block.letterSpacing }
-            : undefined;
-          const prepared = pretextLib.prepare(block.text, fontStr, opts);
-          const result = pretextLib.layout(prepared, newContentWidth, newLineHeight);
-          innerHeight = result.height;
-        } catch (err) {
-          innerHeight = (block.originalHeight - block.paddingY - block.borderY)
-            * (newLineHeight / block.lineHeightPx)
-            * (block.contentWidth / Math.max(1, newContentWidth));
-        }
-      } else {
-        innerHeight = (block.originalHeight - block.paddingY - block.borderY)
-          * (newLineHeight / block.lineHeightPx)
-          * (block.contentWidth / Math.max(1, newContentWidth));
-      }
-
-      const newHeight = innerHeight + block.paddingY + block.borderY;
-      delta += newHeight - block.originalHeight;
-      block.height = newHeight;
-    }
-
-    ch.element.style.height = `${Math.max(40, ch.originalChapterHeight + delta)}px`;
-  }
-
-  _onIntersect(entries) {
-    for (const entry of entries) {
-      if (!entry.isIntersecting) continue;
-      const idx = Number(entry.target.dataset.chapterIndex);
-      const ch = this.chapters[idx];
-      if (ch && !ch.mounted) {
-        this._mount(ch);
-      }
-    }
-  }
-
-  _mount(ch) {
-    ch.element.innerHTML = ch.html;
-    ch.element.style.height = '';
-    ch.element.classList.remove('chapter-placeholder');
-    ch.mounted = true;
-    if (this.observer) this.observer.unobserve(ch.element);
-  }
-}
-
-function buildFontString(block, fontSize, fallbackFamily) {
-  const parts = [];
-  if (block.fontStyle && block.fontStyle !== 'normal') parts.push(block.fontStyle);
-  if (block.fontWeight && block.fontWeight !== '400' && block.fontWeight !== 'normal') {
-    parts.push(block.fontWeight);
-  }
-  parts.push(`${fontSize}px`);
-  parts.push(block.fontFamily || fallbackFamily);
-  return parts.join(' ');
-}
-
-function scheduleRecompute() {
-  if (!virtualReader) return;
-  if (recomputeRaf) return;
-  recomputeRaf = window.requestAnimationFrame(() => {
-    recomputeRaf = 0;
-    virtualReader.recompute();
-  });
+  }));
 }
 
 async function uploadFile(file) {
   if (!file || !file.name.toLowerCase().endsWith('.epub')) {
     setStatus('Please choose a valid .epub file.');
+    input.value = '';
+    return;
+  }
+  if (file.size > MAX_FILE_SIZE) {
+    setStatus('This file is too large. The maximum size is 100MB.');
+    input.value = '';
     return;
   }
 
+  if (activeUploadController) activeUploadController.abort();
+  const controller = new AbortController();
+  activeUploadController = controller;
+  const sequence = ++uploadSequence;
+  layout.setAttribute('aria-busy', 'true');
   setStatus('Parsing EPUB...');
 
   const formData = new FormData();
   formData.append('epub', file);
 
   try {
-    const response = await fetch('/upload', { method: 'POST', body: formData });
-    let payload = null;
-    try {
-      payload = await response.json();
-    } catch (_err) {
-      if (!response.ok) {
-        throw new Error(`Upload failed (${response.status}).`);
-      }
-      throw new Error('Server returned an invalid response.');
-    }
+    const response = await fetch(dropzone.dataset.uploadUrl, {
+      method: 'POST',
+      body: formData,
+      signal: controller.signal,
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) throw new Error(payload?.error || `Upload failed (${response.status}).`);
+    if (!validPayload(payload)) throw new Error('Server returned an invalid book.');
+    if (sequence !== uploadSequence) return;
 
-    if (!response.ok) {
-      throw new Error(payload.error || 'Upload failed.');
-    }
+    setStatus(`Rendering ${payload.chapters.length} chapters...`);
+    const fragment = await renderChapters(payload.chapters, payload.language);
+    reader.replaceChildren(fragment);
+    reader.lang = typeof payload.language === 'string'
+      && /^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$/.test(payload.language)
+      ? payload.language
+      : '';
+    await waitForImages(reader);
+    if (sequence !== uploadSequence) return;
 
-    const title = (payload.title || '').trim() || 'Untitled';
+    const title = payload.title.trim() || 'Untitled';
     document.title = `${title} - ${BASE_TITLE}`;
     bookTitle.textContent = title;
     bookHeader.hidden = false;
@@ -515,143 +307,116 @@ async function uploadFile(file) {
     newBookBtn.hidden = false;
     baseHue = hashToHue(title || file.name);
     updateAdaptiveHue();
-
-    const chapters = Array.isArray(payload.chapters) ? payload.chapters : [];
-    if (chapters.length === 0) {
-      throw new Error('No readable chapters found.');
-    }
-
-    if (virtualReader) {
-      virtualReader.destroy();
-    }
-    reader.innerHTML = '';
-    virtualReader = new VirtualReader(reader, measureNode);
-    setStatus(`Measuring 0 / ${chapters.length} chapters...`);
-    await virtualReader.load(chapters, (done, total) => {
-      setStatus(`Measuring ${done} / ${total} chapters...`);
-    });
-
     setStatus('Loaded. Scroll to read.');
-    window.scrollTo({ top: bookHeader.offsetTop, behavior: 'smooth' });
+    bookTitle.focus({ preventScroll: true });
   } catch (err) {
-    setStatus(err.message);
+    if (err.name !== 'AbortError' && sequence === uploadSequence) {
+      setStatus(err.message || 'The EPUB could not be loaded.');
+    }
+  } finally {
+    if (activeUploadController === controller) activeUploadController = null;
+    if (sequence === uploadSequence) layout.removeAttribute('aria-busy');
+    if (sequence === uploadSequence) input.value = '';
   }
 }
 
-['dragenter', 'dragover'].forEach((evtName) => {
-  dropzone.addEventListener(evtName, (evt) => {
-    evt.preventDefault();
+function hasFiles(event) {
+  return Array.from(event.dataTransfer?.types || []).includes('Files');
+}
+
+function clearDragState() {
+  pageDragDepth = 0;
+  dropzone.classList.remove('active');
+  document.body.classList.remove('page-dragging');
+}
+
+['dragenter', 'dragover'].forEach((eventName) => {
+  dropzone.addEventListener(eventName, (event) => {
+    if (!hasFiles(event)) return;
+    event.preventDefault();
     dropzone.classList.add('active');
   });
 });
 
-['dragleave'].forEach((evtName) => {
-  dropzone.addEventListener(evtName, (evt) => {
-    evt.preventDefault();
-    dropzone.classList.remove('active');
-  });
+dropzone.addEventListener('dragleave', (event) => {
+  if (event.relatedTarget && dropzone.contains(event.relatedTarget)) return;
+  dropzone.classList.remove('active');
 });
 
-dropzone.addEventListener('drop', (evt) => {
-  evt.preventDefault();
-  dropzone.classList.remove('active');
-  const file = evt.dataTransfer?.files?.[0];
-  if (file) uploadFile(file);
+dropzone.addEventListener('drop', (event) => {
+  if (!hasFiles(event)) return;
+  event.preventDefault();
+  clearDragState();
+  uploadFile(event.dataTransfer.files?.[0]);
 });
 
 let pageDragDepth = 0;
-['dragenter', 'dragover'].forEach((evtName) => {
-  document.addEventListener(evtName, (evt) => {
-    if (dropzone.contains(evt.target)) return;
-    evt.preventDefault();
-    if (evtName === 'dragenter' && layout.classList.contains('has-book')) {
-      pageDragDepth += 1;
-      document.body.classList.add('page-dragging');
-    }
-  });
-});
-['dragleave'].forEach((evtName) => {
-  document.addEventListener(evtName, (evt) => {
-    if (dropzone.contains(evt.target)) return;
-    pageDragDepth = Math.max(0, pageDragDepth - 1);
-    if (pageDragDepth === 0) document.body.classList.remove('page-dragging');
-  });
-});
-document.addEventListener('drop', (evt) => {
-  if (dropzone.contains(evt.target)) return;
-  evt.preventDefault();
-  pageDragDepth = 0;
-  document.body.classList.remove('page-dragging');
-  const file = evt.dataTransfer?.files?.[0];
-  if (file) uploadFile(file);
+document.addEventListener('dragenter', (event) => {
+  if (!hasFiles(event) || dropzone.contains(event.target)) return;
+  event.preventDefault();
+  pageDragDepth += 1;
+  if (layout.classList.contains('has-book')) document.body.classList.add('page-dragging');
 });
 
-input.addEventListener('change', () => {
-  uploadFile(input.files?.[0]);
+document.addEventListener('dragover', (event) => {
+  if (!hasFiles(event) || dropzone.contains(event.target)) return;
+  event.preventDefault();
 });
 
-themeSelect.addEventListener('change', () => {
-  setTheme(themeSelect.value);
+document.addEventListener('dragleave', (event) => {
+  if (event.relatedTarget === null) clearDragState();
 });
 
-fontFamilySelect.addEventListener('change', () => {
-  setFontFamily(fontFamilySelect.value);
-  scheduleRecompute();
+document.addEventListener('dragend', clearDragState);
+
+document.addEventListener('drop', (event) => {
+  if (dropzone.contains(event.target) || !hasFiles(event)) return;
+  event.preventDefault();
+  clearDragState();
+  uploadFile(event.dataTransfer.files?.[0]);
 });
 
-fontSizeInput.addEventListener('input', () => {
-  setFontSize(fontSizeInput.value);
-  scheduleRecompute();
-});
+function openFilePicker() {
+  input.value = '';
+  input.click();
+}
 
-readerWidthInput.addEventListener('input', () => {
-  setReaderWidth(readerWidthInput.value);
-  scheduleRecompute();
-});
+chooseBookBtn.addEventListener('click', openFilePicker);
+newBookBtn.addEventListener('click', openFilePicker);
+input.addEventListener('change', () => uploadFile(input.files?.[0]));
 
-brightnessInput.addEventListener('input', () => {
-  setBrightness(brightnessInput.value);
-});
-
-contrastInput.addEventListener('input', () => {
-  setContrast(contrastInput.value);
-});
-
-sepiaInput.addEventListener('input', () => {
-  setSepia(sepiaInput.value);
-});
-
-grayscaleInput.addEventListener('input', () => {
-  setGrayscale(grayscaleInput.value);
-});
+themeSelect.addEventListener('change', () => setTheme(themeSelect.value));
+fontFamilySelect.addEventListener('change', () => setFontFamily(fontFamilySelect.value));
+fontSizeInput.addEventListener('input', () => setFontSize(fontSizeInput.value));
+readerWidthInput.addEventListener('input', () => setReaderWidth(readerWidthInput.value));
+brightnessInput.addEventListener('input', () => setBrightness(brightnessInput.value));
+contrastInput.addEventListener('input', () => setContrast(contrastInput.value));
+sepiaInput.addEventListener('input', () => setSepia(sepiaInput.value));
+grayscaleInput.addEventListener('input', () => setGrayscale(grayscaleInput.value));
 
 settingsOpenBtn.addEventListener('click', () => {
-  if (typeof settingsDialog.showModal === 'function') {
-    settingsDialog.showModal();
-  } else {
-    settingsDialog.setAttribute('open', '');
-  }
+  if (typeof settingsDialog.showModal === 'function') settingsDialog.showModal();
+  else settingsDialog.setAttribute('open', '');
   settingsOpenBtn.setAttribute('aria-expanded', 'true');
-  const firstControl = settingsDialog.querySelector('.control');
-  if (firstControl) firstControl.focus();
+  settingsDialog.querySelector('.control')?.focus();
 });
 
-newBookBtn.addEventListener('click', () => {
-  input.click();
+settingsDialog.addEventListener('click', (event) => {
+  if (event.target === settingsDialog) closeSettingsDialog();
 });
 
-settingsDialog.addEventListener('click', (evt) => {
-  if (evt.target === settingsDialog) {
-    closeSettingsDialog();
-  }
+settingsDialog.addEventListener('submit', (event) => {
+  event.preventDefault();
+  closeSettingsDialog();
 });
 
-window.addEventListener('resize', () => {
-  syncMeasureWidth();
-  scheduleRecompute();
+settingsDialog.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') closeSettingsDialog();
 });
+
+window.addEventListener('scroll', scheduleAdaptiveHue, { passive: true });
+window.addEventListener('resize', scheduleAdaptiveHue);
 
 initTheme();
 initReaderPrefs();
 setHue(baseHue);
-syncMeasureWidth();
