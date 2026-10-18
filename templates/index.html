@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>EPUB Reader</title>
+  <title>Book Reader</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
 </head>
 <body>
@@ -100,12 +100,12 @@
   </dialog>
 
   <main class="layout">
-    <section id="dropzone" class="dropzone" data-upload-url="{{ url_for('upload_epub') }}" aria-labelledby="upload-title">
+    <section id="dropzone" class="dropzone" data-upload-url="{{ url_for('upload_epub') }}" data-decoded-upload-url="{{ url_for('upload_decoded_book') }}" aria-labelledby="upload-title">
       <h1 id="upload-title">Open a book</h1>
-      <p><strong>Drag and drop your .epub here</strong></p>
+      <p><strong>Drag and drop an .epub or DRM-free .azw3 here</strong></p>
       <p>or</p>
       <button id="choose-book" class="file-btn" type="button">Choose file</button>
-      <input id="epub-input" class="visually-hidden" type="file" accept=".epub" aria-label="EPUB file" />
+      <input id="epub-input" class="visually-hidden" type="file" accept=".epub,.azw3" aria-label="EPUB or AZW3 book file" />
     </section>
     <p id="status" class="status" role="status" aria-live="polite">Waiting for file...</p>
 

@@ -5,11 +5,12 @@ import mimetypes
 import os
 import posixpath
 import re
+import tempfile
 import zipfile
 from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from io import BytesIO
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from typing import BinaryIO
 from urllib.parse import unquote, urlsplit
 from xml.etree import ElementTree as ET
@@ -635,7 +636,7 @@ def add_security_headers(response):
     response.headers.setdefault(
         "Content-Security-Policy",
         "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
-        "img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; "
+        "img-src 'self' data:; font-src 'self'; connect-src 'self' blob:; object-src 'none'; "
         "base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
     )
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
@@ -644,7 +645,10 @@ def add_security_headers(response):
 
 
 def _max_file_size_label() -> str:
-    size = app.config.get("MAX_EPUB_FILE_SIZE", MAX_FILE_SIZE)
+    size = app.config.get(
+        "MAX_BOOK_FILE_SIZE",
+        app.config.get("MAX_EPUB_FILE_SIZE", MAX_FILE_SIZE),
+    )
     if size % (1024 * 1024) == 0:
         return f"{size // (1024 * 1024)}MB"
     return f"{size} bytes"
@@ -669,18 +673,165 @@ def _uploaded_size(file) -> int | None:
         return None
 
 
+def _sniff_upload_image(data: bytes) -> tuple[str, str] | None:
+    if data.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg", "jpg"
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png", "png"
+    if data.startswith((b"GIF87a", b"GIF89a")):
+        return "image/gif", "gif"
+    if data.startswith(b"BM"):
+        return "image/bmp", "bmp"
+    if data.startswith(b"RIFF") and data[8:12] == b"WEBP":
+        return "image/webp", "webp"
+    if len(data) >= 12 and data[4:8] == b"ftyp" and data[8:12] in {b"avif", b"avis"}:
+        return "image/avif", "avif"
+    return None
+
+
+def _parse_decoded_book(payload: object) -> tuple[str, str | None, list[dict]]:
+    """Package browser-decoded MOBI content, then pass it through EPUB sanitization."""
+    if not isinstance(payload, dict):
+        raise EpubError("Invalid decoded book payload.")
+
+    title = payload.get("title")
+    language = payload.get("language")
+    chapters = payload.get("chapters")
+    images = payload.get("images", [])
+    if not isinstance(title, str) or not isinstance(chapters, list) or not chapters:
+        raise EpubError("Decoded book is missing a title or readable chapters.")
+    if len(title) > 5000 or len(chapters) > MAX_CHAPTER_COUNT:
+        raise EpubError("Decoded book metadata or chapter count is too large.")
+    if language is not None and (
+        not isinstance(language, str)
+        or len(language) > 64
+        or not re.fullmatch(r"[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*", language)
+    ):
+        language = None
+    if not isinstance(images, list) or len(images) > MAX_INLINE_IMAGE_REFERENCES:
+        raise EpubError("Decoded book contains too many images.")
+
+    image_entries: list[tuple[str, str, bytes]] = []
+    image_paths: dict[str, str] = {}
+    total_image_bytes = 0
+    for image in images:
+        if not isinstance(image, dict):
+            raise EpubError("Decoded book contains an invalid image resource.")
+        image_id = image.get("id")
+        mime_type = image.get("mime")
+        encoded = image.get("data")
+        if (
+            not isinstance(image_id, str)
+            or not re.fullmatch(r"image-[1-9][0-9]{0,5}", image_id)
+            or image_id in image_paths
+            or not isinstance(mime_type, str)
+            or mime_type not in SAFE_IMAGE_MIME_TYPES
+            or not isinstance(encoded, str)
+            or len(encoded) > ((MAX_INLINE_IMAGE_SIZE + 2) // 3) * 4
+        ):
+            raise EpubError("Decoded book contains an invalid image resource.")
+        try:
+            image_bytes = base64.b64decode(encoded, validate=True)
+        except (ValueError, TypeError) as exc:
+            raise EpubError("Decoded book contains invalid image data.") from exc
+        detected = _sniff_upload_image(image_bytes)
+        if (
+            detected is None
+            or detected[0] != mime_type
+            or len(image_bytes) > MAX_INLINE_IMAGE_SIZE
+        ):
+            raise EpubError("Decoded book contains an unsupported image resource.")
+        total_image_bytes += len(image_bytes)
+        if total_image_bytes > MAX_TOTAL_INLINE_IMAGE_SIZE:
+            raise EpubError("Decoded book contains too much image data.")
+        image_path = f"OPS/Images/{image_id}.{detected[1]}"
+        image_paths[image_id] = image_path
+        image_entries.append((image_id, mime_type, image_bytes))
+
+    chapter_entries: list[tuple[str, str]] = []
+    total_chapter_source = 0
+    for index, chapter in enumerate(chapters, start=1):
+        if not isinstance(chapter, dict) or not isinstance(chapter.get("html"), str):
+            raise EpubError("Decoded book contains an invalid chapter.")
+        chapter_html = chapter["html"]
+        chapter_size = len(chapter_html.encode("utf-8"))
+        if chapter_size > MAX_CHAPTER_SOURCE_SIZE:
+            raise EpubError("Decoded book chapter is too large to process safely.")
+        total_chapter_source += chapter_size
+        if total_chapter_source > MAX_TOTAL_UNCOMPRESSED_SIZE:
+            raise EpubError("Decoded book content is too large to process safely.")
+        for image_id, image_path in image_paths.items():
+            relative_path = "../Images/" + image_path.rsplit("/", 1)[-1]
+            chapter_html = chapter_html.replace(f"asset:{image_id}", relative_path)
+        chapter_entries.append((f"chapter-{index}", chapter_html))
+
+    escaped_title = html.escape(title, quote=False)
+    language_xml = f"<dc:language>{html.escape(language)}</dc:language>" if language else ""
+    manifest = [
+        f'<item id="{chapter_id}" href="Text/{chapter_id}.xhtml" '
+        'media-type="application/xhtml+xml" />'
+        for chapter_id, _chapter_html in chapter_entries
+    ]
+    manifest.extend(
+        f'<item id="{image_id}" href="Images/{image_paths[image_id].rsplit("/", 1)[1]}" '
+        f'media-type="{mime_type}" />'
+        for image_id, mime_type, _image_bytes in image_entries
+    )
+    spine = [f'<itemref idref="{chapter_id}" />' for chapter_id, _html in chapter_entries]
+    opf = (
+        '<?xml version="1.0" encoding="utf-8"?>'
+        '<package xmlns="http://www.idpf.org/2007/opf" version="3.0">'
+        '<metadata xmlns:dc="http://purl.org/dc/elements/1.1/">'
+        f"<dc:title>{escaped_title}</dc:title>{language_xml}</metadata>"
+        f"<manifest>{''.join(manifest)}</manifest><spine>{''.join(spine)}</spine></package>"
+    )
+    container = (
+        '<?xml version="1.0" encoding="utf-8"?>'
+        '<container version="1.0" '
+        'xmlns="urn:oasis:names:tc:opendocument:xmlns:container">'
+        '<rootfiles><rootfile full-path="OPS/content.opf" '
+        'media-type="application/oebps-package+xml" /></rootfiles></container>'
+    )
+
+    with tempfile.SpooledTemporaryFile(max_size=8 * 1024 * 1024, mode="w+b") as synthetic_epub:
+        with zipfile.ZipFile(synthetic_epub, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("mimetype", "application/epub+zip", compress_type=zipfile.ZIP_STORED)
+            archive.writestr("META-INF/container.xml", container)
+            archive.writestr("OPS/content.opf", opf)
+            for chapter_id, chapter_html in chapter_entries:
+                archive.writestr(
+                    f"OPS/Text/{chapter_id}.xhtml",
+                    chapter_html,
+                    compress_type=zipfile.ZIP_STORED,
+                )
+            for image_id, _mime_type, image_bytes in image_entries:
+                image_path = image_paths[image_id]
+                archive.writestr(image_path, image_bytes, compress_type=zipfile.ZIP_STORED)
+        synthetic_epub.seek(0)
+        parsed_title, parsed_language, parsed_chapters = _parse_epub(synthetic_epub)
+
+    return parsed_title or title, parsed_language or language, parsed_chapters
+
+
 @app.post("/upload")
 def upload_epub():
-    file = request.files.get("epub")
+    if "book" in request.files and "epub" in request.files:
+        return jsonify({"error": "Upload one book at a time."}), 400
+    field_name = "book" if "book" in request.files else "epub"
+    file = request.files.get(field_name)
     if file is None:
         return jsonify({"error": "No file uploaded."}), 400
 
     filename = file.filename or ""
-    if not filename.lower().endswith(".epub"):
+    extension = Path(filename).suffix.lower()
+    if extension != ".epub":
+        if extension == ".azw3":
+            return jsonify({"error": "AZW3 files must be decoded by the reader before upload."}), 400
         return jsonify({"error": "Only .epub files are supported."}), 400
 
+    file_size_limit = app.config.get("MAX_EPUB_FILE_SIZE", MAX_FILE_SIZE)
     uploaded_size = _uploaded_size(file)
-    if uploaded_size is not None and uploaded_size > app.config.get("MAX_EPUB_FILE_SIZE", MAX_FILE_SIZE):
+    if uploaded_size is not None and uploaded_size > file_size_limit:
         return handle_file_too_large(RequestEntityTooLarge())
 
     try:
@@ -694,6 +845,20 @@ def upload_epub():
     except Exception:
         app.logger.exception("Unexpected EPUB upload failure")
         return jsonify({"error": "The EPUB could not be processed."}), 500
+
+    return jsonify({"title": title, "language": language, "chapters": chapters})
+
+
+@app.post("/upload/decoded")
+def upload_decoded_book():
+    payload = request.get_json(silent=True)
+    try:
+        title, language, chapters = _parse_decoded_book(payload)
+    except EpubError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except Exception:
+        app.logger.exception("Unexpected decoded book upload failure")
+        return jsonify({"error": "The decoded book could not be processed."}), 500
 
     return jsonify({"title": title, "language": language, "chapters": chapters})
 

@@ -1,4 +1,5 @@
 from io import BytesIO
+import base64
 import re
 import zipfile
 
@@ -211,6 +212,83 @@ def test_upload_epub_success(client):
     assert payload["title"] == "Test Book"
     assert payload["language"] is None
     assert payload["chapters"] == [{"html": "<p>Hello reader.</p>", "id": "chapter-1"}]
+
+
+def test_reader_security_policy_allows_local_decoder_blob_reads(client):
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "connect-src 'self' blob:" in response.headers["Content-Security-Policy"]
+
+
+def test_upload_decoded_book_reuses_epub_sanitizer(client):
+    image = b"\x89PNG\r\n\x1a\nfixture-image"
+    response = client.post(
+        "/upload/decoded",
+        json={
+            "title": "Decoded Book",
+            "language": "en",
+            "chapters": [{
+                "html": (
+                    '<html><body><p>Decoded KF8.</p>'
+                    '<script>alert(1)</script>'
+                    '<img src="asset:image-1" alt="cover" />'
+                    '</body></html>'
+                )
+            }],
+            "images": [{
+                "id": "image-1",
+                "mime": "image/png",
+                "data": base64.b64encode(image).decode("ascii"),
+            }],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["title"] == "Decoded Book"
+    assert payload["language"] == "en"
+    assert payload["chapters"][0]["html"].startswith("<p>Decoded KF8.</p>")
+    assert "script" not in payload["chapters"][0]["html"]
+    assert 'src="data:image/png;base64,' in payload["chapters"][0]["html"]
+
+
+def test_upload_decoded_book_rejects_untrusted_image_data(client):
+    response = client.post(
+        "/upload/decoded",
+        json={
+            "title": "Book",
+            "chapters": [{"html": "<html><body><p>Text</p></body></html>"}],
+            "images": [{"id": "image-1", "mime": "image/png", "data": "not-base64!"}],
+        },
+    )
+
+    assert response.status_code == 400
+    assert "invalid image data" in response.get_json()["error"]
+
+
+def test_upload_decoded_book_rejects_invalid_extension(client):
+    response = client.post(
+        "/upload",
+        data={"book": (BytesIO(b"not a book"), "book.mobi")},
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 400
+    assert response.get_json() == {"error": "Only .epub files are supported."}
+
+
+def test_raw_azw3_upload_requires_reader_decoder(client):
+    response = client.post(
+        "/upload",
+        data={"book": (BytesIO(b"not decoded"), "book.azw3")},
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 400
+    assert response.get_json() == {
+        "error": "AZW3 files must be decoded by the reader before upload."
+    }
 
 
 def test_upload_rejects_invalid_extension(client):

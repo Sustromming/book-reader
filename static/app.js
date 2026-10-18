@@ -24,7 +24,7 @@ const bookHeader = document.getElementById('book-header');
 const bookTitle = document.getElementById('book-title');
 const layout = document.querySelector('.layout');
 
-const BASE_TITLE = 'EPUB Reader';
+const BASE_TITLE = 'Book Reader';
 const MAX_FILE_SIZE = 100 * 1024 * 1024;
 const THEME_KEY = 'epub_reader_theme';
 const FONT_KEY = 'epub_reader_font';
@@ -257,8 +257,9 @@ async function waitForImages(container) {
 }
 
 async function uploadFile(file) {
-  if (!file || !file.name.toLowerCase().endsWith('.epub')) {
-    setStatus('Please choose a valid .epub file.');
+  const extension = file?.name?.toLowerCase().match(/\.(epub|azw3)$/)?.[1];
+  if (!file || !extension) {
+    setStatus('Please choose a valid .epub or .azw3 file.');
     input.value = '';
     return;
   }
@@ -273,15 +274,33 @@ async function uploadFile(file) {
   activeUploadController = controller;
   const sequence = ++uploadSequence;
   layout.setAttribute('aria-busy', 'true');
-  setStatus('Parsing EPUB...');
+  setStatus(extension === 'azw3' ? 'Converting AZW3...' : 'Parsing EPUB...');
 
   const formData = new FormData();
-  formData.append('epub', file);
 
   try {
-    const response = await fetch(dropzone.dataset.uploadUrl, {
+    let uploadUrl = dropzone.dataset.uploadUrl;
+    let requestBody = formData;
+    const requestHeaders = {};
+
+    if (extension === 'azw3') {
+      const { decodeAzw3 } = await import('./azw3.js');
+      const decodedBook = await decodeAzw3(file, {
+        signal: controller.signal,
+        onProgress: setStatus,
+      });
+      if (sequence !== uploadSequence) return;
+      uploadUrl = dropzone.dataset.decodedUploadUrl;
+      requestBody = JSON.stringify(decodedBook);
+      requestHeaders['Content-Type'] = 'application/json';
+    } else {
+      formData.append('book', file);
+    }
+
+    const response = await fetch(uploadUrl, {
       method: 'POST',
-      body: formData,
+      headers: requestHeaders,
+      body: requestBody,
       signal: controller.signal,
     });
     const payload = await response.json().catch(() => null);
@@ -291,6 +310,7 @@ async function uploadFile(file) {
 
     setStatus(`Rendering ${payload.chapters.length} chapters...`);
     const fragment = await renderChapters(payload.chapters, payload.language);
+    if (sequence !== uploadSequence) return;
     reader.replaceChildren(fragment);
     reader.lang = typeof payload.language === 'string'
       && /^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$/.test(payload.language)
@@ -311,7 +331,7 @@ async function uploadFile(file) {
     bookTitle.focus({ preventScroll: true });
   } catch (err) {
     if (err.name !== 'AbortError' && sequence === uploadSequence) {
-      setStatus(err.message || 'The EPUB could not be loaded.');
+      setStatus(err.message || 'The book could not be loaded.');
     }
   } finally {
     if (activeUploadController === controller) activeUploadController = null;

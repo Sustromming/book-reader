@@ -1,7 +1,7 @@
 [project]
 name = "epub-reader"
 version = "0.1.0"
-description = "A Flask-based EPUB reader"
+description = "A Flask-based EPUB and AZW3 reader"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
